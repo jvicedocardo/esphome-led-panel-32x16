@@ -272,9 +272,12 @@ El chip USB de estas placas suele ser un **CH343**, que aparece como
 
 ## 7. Electrónica y cableado
 
-> 📐 **[Diagrama visual del cableado](cableado.html)** — esquema completo con los tres
-> dominios, la lista de materiales con precios y el orden de montaje. Es una página HTML
-> suelta: se abre en cualquier navegador, sin conexión, y se imprime bien.
+> 📐 **[Diagrama visual del cableado](https://jvicedocardo.github.io/esphome-led-panel-32x16/docs/cableado.html)** — esquema completo con los tres dominios,
+> la lista de materiales con precios y el orden de montaje.
+>
+> Ese enlace lo sirve GitHub Pages. El archivo está en el repositorio como
+> `docs/cableado.html`: una vez clonado se abre en cualquier navegador **sin conexión**, y
+> se imprime bien para tenerlo al lado mientras cableas.
 
 Hay **tres dominios eléctricos separados** y conviene no mezclarlos mentalmente:
 los 230 V que solo existen dentro de la caja de la fuente, los 5 V de potencia, y

@@ -39,7 +39,8 @@ rotación automática de páginas y apagado.
 👉 **[Guía de construcción completa](docs/GUIA.md)** — lista de materiales con
 enlaces, piezas a imprimir, cableado, montaje, calibración y resolución de problemas.
 
-📐 **[Diagrama de cableado](docs/cableado.html)** — página HTML suelta, se abre sin conexión.
+📐 **[Diagrama de cableado](https://jvicedocardo.github.io/esphome-led-panel-32x16/docs/cableado.html)** — esquema completo, lista de materiales y orden de montaje.
+Se ve a través de GitHub Pages; el archivo es `docs/cableado.html` y funciona sin conexión una vez clonado.
 
 ## Qué hay aquí
 

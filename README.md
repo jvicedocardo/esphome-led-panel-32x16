@@ -49,7 +49,8 @@ automatic page rotation and a screen-off switch.
 👉 **[Full build guide](docs/GUIA.md)** *(Spanish)* — bill of materials with links,
 parts to print, wiring, assembly, calibration and troubleshooting.
 
-📐 **[Wiring diagram](docs/cableado.html)** — standalone HTML page, opens offline.
+📐 **[Wiring diagram](https://jvicedocardo.github.io/esphome-led-panel-32x16/docs/cableado.html)** — full schematic, bill of materials and assembly order.
+Rendered via GitHub Pages; the file itself is `docs/cableado.html` and works offline once cloned.
 
 ## What is in here
 
