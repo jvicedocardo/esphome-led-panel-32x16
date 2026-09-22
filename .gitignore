@@ -1,0 +1,10 @@
+# Secretos: NUNCA subir
+secrets.yaml
+firmware/secrets.yaml
+
+# Sprites generados a partir de pliegos de terceros. Se generan con
+# herramientas/extraer_sprites.py; ver el aviso en panel_led_sprites.h.
+firmware/panel_led_sprites_propios.h
+
+__pycache__/
+*.pyc

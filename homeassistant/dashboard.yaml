@@ -1,0 +1,153 @@
+# =====================================================================
+#  Panel de control del Panel LED 32x16 — configuracion completa
+#
+#  Va en:  panel "Panel LED" -> editar -> tres puntos -> Editor de
+#          configuracion en bruto. Sustituye TODO el contenido.
+#
+#  Las tarjetas van sueltas al nivel de la vista, NO dentro de un
+#  vertical-stack: asi HA las reparte solas en columnas segun el ancho de
+#  la pantalla. Solo se agrupan las que tienen que ir juntas.
+#
+#  ⚠️ Comprueba los entity_id en Herramientas para desarrolladores ->
+#  Estados, filtrando por `panel_led`. Si asignaste el dispositivo a un
+#  area y aceptaste el renombrado que ofrece HA, llevaran el area
+#  delante: `switch.salon_panel_led_pantalla` en vez de
+#  `switch.panel_led_pantalla`. Sustituyelos todos si es tu caso.
+# =====================================================================
+views:
+
+  # ===================================================================
+  #  PESTAÑA 1 — uso diario
+  # ===================================================================
+  - title: Panel LED
+    path: panel
+    icon: mdi:television-ambient-light
+    cards:
+
+      - type: entities
+        title: Panel
+        entities:
+          - entity: switch.panel_led_pantalla
+            name: Pantalla
+            icon: mdi:television
+          - entity: select.panel_led_pagina
+            name: Página
+            icon: mdi:page-next-outline
+          - entity: switch.panel_led_rotacion_automatica
+            name: Rotación automática
+            icon: mdi:rotate-3d-variant
+          - type: section
+            label: Noche
+          - entity: switch.panel_led_modo_noche
+            name: Modo noche
+            icon: mdi:weather-night
+          - entity: switch.panel_led_horario_nocturno_automatico
+            name: Por horario
+            icon: mdi:clock-check-outline
+
+      # El selector y los botones van juntos a proposito: son una sola cosa
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Animación
+            entities:
+              - entity: select.panel_led_animacion
+                name: Escena
+                icon: mdi:movie-open-outline
+          - type: grid
+            columns: 3
+            square: false
+            cards:
+              - type: tile
+                entity: button.panel_led_reproducir_animacion
+                name: Reproducir
+                icon: mdi:play-circle
+              - type: tile
+                entity: button.panel_led_aviso_ubicacion_1
+                name: Aviso persona 1
+                icon: mdi:map-marker-account
+              - type: tile
+                entity: button.panel_led_aviso_ubicacion_2
+                name: Aviso persona 2
+                icon: mdi:map-marker-account
+
+      - type: entities
+        title: Apariencia
+        entities:
+          - entity: select.panel_led_color_del_reloj
+            name: Color del reloj
+            icon: mdi:palette
+          - entity: number.panel_led_brillo_normal
+            name: Brillo de día
+          - entity: number.panel_led_brillo_nocturno
+            name: Brillo de noche
+
+  # ===================================================================
+  #  PESTAÑA 2 — ajustes finos
+  #
+  #  Para que solo la vea el administrador NO se edita aqui: hazlo desde
+  #  la interfaz, que escribe sola los identificadores de usuario.
+  #    editar panel -> lapiz de la pestaña -> pestaña "Visibilidad"
+  #    -> deja marcado solo tu usuario.
+  #
+  #  ⚠️ Eso OCULTA la pestaña, no la protege: quien sepa la direccion
+  #  /panel-led/controles puede abrirla igual, y de todos modos cualquiera
+  #  con acceso a HA puede tocar esas entidades desde otro sitio. Si
+  #  necesitas que sea de verdad inaccesible, hace falta un panel aparte
+  #  creado con "Solo administradores" en Ajustes -> Paneles de control.
+  # ===================================================================
+  - title: Controles
+    path: controles
+    icon: mdi:tune-vertical
+    cards:
+
+      - type: entities
+        title: Horario nocturno
+        entities:
+          - type: section
+            label: Empieza
+          - entity: number.panel_led_noche_hora_inicio
+            name: Hora
+          - entity: number.panel_led_noche_minuto_inicio
+            name: Minuto
+          - type: section
+            label: Termina
+          - entity: number.panel_led_noche_hora_fin
+            name: Hora
+          - entity: number.panel_led_noche_minuto_fin
+            name: Minuto
+
+      - type: entities
+        title: Ritmos
+        entities:
+          - entity: number.panel_led_segundos_de_rotacion
+            name: Rotación de páginas
+          - entity: number.panel_led_animacion_ms_por_pixel
+            name: Velocidad de animación
+          - entity: number.panel_led_segundos_de_aviso
+            name: Duración del aviso
+
+      - type: entities
+        title: Página del tiempo
+        entities:
+          - entity: number.panel_led_tiempo_segundos_por_dato
+            name: Segundos por dato
+          - entity: number.panel_led_tiempo_maximo_de_datos
+            name: Datos en rotación
+          - type: section
+            label: Cuándo entra cada dato
+          - entity: number.panel_led_tiempo_umbral_de_viento
+            name: Viento desde
+          - entity: number.panel_led_tiempo_umbral_de_racha
+            name: Racha supera la media en
+          - entity: number.panel_led_tiempo_umbral_de_sensacion
+            name: Sensación difiere en
+          - entity: number.panel_led_umbral_de_temperatura
+            name: Temperatura pasa a azul bajo
+
+      - type: entities
+        title: Depuración
+        show_header_toggle: false
+        entities:
+          - entity: number.panel_led_indice_de_pixel
+            name: Índice de píxel

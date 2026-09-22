@@ -1,0 +1,90 @@
+Panel LED informativo 32x16
+Copyright (c) 2026 Jordi V.
+
+Este proyecto se publica bajo tres licencias segun el tipo de material. En
+los tres casos puedes hacer forks y mejoras: la condicion comun es que se
+reconozca de donde viene.
+
+=======================================================================
+ 1. CODIGO  —  firmware/, homeassistant/, herramientas/
+    Licencia MIT
+=======================================================================
+
+Por la presente se concede permiso, libre de cargos, a cualquier persona
+que obtenga una copia de este software y de los archivos de documentacion
+asociados, a utilizar el software sin restriccion, incluyendo sin
+limitacion los derechos a usar, copiar, modificar, fusionar, publicar,
+distribuir, sublicenciar y/o vender copias del software, y a permitir a
+las personas a las que se les proporcione el software a hacer lo mismo,
+sujeto a las siguientes condiciones:
+
+El aviso de copyright anterior y este aviso de permiso se incluiran en
+todas las copias o partes sustanciales del software.
+
+EL SOFTWARE SE PROPORCIONA "COMO ESTA", SIN GARANTIA DE NINGUN TIPO,
+EXPRESA O IMPLICITA, INCLUYENDO PERO NO LIMITADO A GARANTIAS DE
+COMERCIALIZACION, IDONEIDAD PARA UN PROPOSITO PARTICULAR Y NO
+INFRACCION. EN NINGUN CASO LOS AUTORES SERAN RESPONSABLES DE NINGUNA
+RECLAMACION, DANO U OTRA RESPONSABILIDAD.
+
+=======================================================================
+ 2. DOCUMENTACION  —  docs/, README.md
+    Creative Commons Atribucion-CompartirIgual 4.0  (CC BY-SA 4.0)
+    https://creativecommons.org/licenses/by-sa/4.0/deed.es
+=======================================================================
+
+Puedes compartirla y adaptarla para cualquier finalidad, incluso
+comercial, dando credito al origen, indicando si has hecho cambios y
+distribuyendo tus contribuciones bajo esta misma licencia.
+
+=======================================================================
+ 3. MODELO 3D  —  impresion3d/
+    Creative Commons Atribucion-CompartirIgual 4.0  (CC BY-SA 4.0)
+    https://creativecommons.org/licenses/by-sa/4.0/deed.es
+=======================================================================
+
+Mismas condiciones que la documentacion: compartir y adaptar libremente,
+dando credito e indicando los cambios, y distribuyendo las contribuciones
+bajo esta misma licencia.
+
+-----------------------------------------------------------------------
+ORIGEN E INSPIRACION
+-----------------------------------------------------------------------
+
+Este marco esta INSPIRADO en "Frame Led Matrix 16x16 sound reactive" de
+DBMaking (MakerWorld, modelo 156388), publicado bajo CC BY-NC. Credito y
+gracias: sin ese modelo habria costado bastante mas llegar a estas cotas.
+
+Que se tomo de alli: MEDIDAS, obtenidas midiendo el modelo publicado.
+Apertura de celda 8,6 mm, pared 1,4 mm, profundidad 7,2 mm, borde
+exterior 2,0 mm y labio de registro de 1x1 mm.
+
+Que NO se tomo: nada de geometria ni de archivos. Este modelo esta
+escrito desde cero como codigo parametrico en OpenSCAD, es de 32x16 en
+vez de 16x16, y anade bandeja, bisel y caja de electronica que el
+original no tiene.
+
+Por que se publica bajo CC BY-SA y no hereda la clausula NoComercial:
+esas medidas son soluciones FUNCIONALES, no expresion creativa. El paso
+de 10 mm lo impone la matriz de LEDs; la apertura y la pared son
+consecuencia aritmetica de ese paso y del grosor minimo imprimible; la
+profundidad sale del compromiso entre aislar la luz y no perder angulo de
+vision; el labio es un encaje. Cualquiera que disene una rejilla difusora
+para una matriz de paso 10 mm llega a numeros casi identicos. El
+copyright protege la expresion creativa, no los hechos ni las soluciones
+tecnicas, y una reimplementacion limpia a partir de medidas, de distinto
+tamano y con partes propias, se considera obra independiente.
+
+Esto es un criterio razonado, no un dictamen juridico. Si DBMaking
+considera lo contrario, el camino sensato es hablarlo.
+
+=======================================================================
+ OBRA DE TERCEROS QUE NO SE REDISTRIBUYE
+=======================================================================
+
+La caja de la fuente es "Meanwell LRS-100-5 Case" de bloodpack
+(Printables, modelo 183280). No esta en este repositorio: se enlaza.
+
+Este repositorio NO contiene sprites de videojuegos comerciales. Los
+dibujos de animacion incluidos son originales y de relleno. Las
+instrucciones para generar los tuyos estan en panel_led_sprites.h.

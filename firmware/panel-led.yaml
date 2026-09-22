@@ -1,0 +1,1194 @@
+# =====================================================================
+#  panel-led.yaml — Panel LED 32x16 (2x WS2812B 16x16) + ESP32-S3-N16R8
+#  Version con PAGINAS — 2026-09-20
+#
+#  Paginas: Reloj (grande) · Tiempo (icono + temperatura grande + humedad)
+#           Presencia (dos monigotes grandes)
+#
+#  ⚠️ NUNCA uses `x` ni `y` como nombre de variable dentro de un lambda de
+#     display: chocan con los parametros del pixel_mapper y NO se dibuja
+#     nada, sin ningun error en los logs. Usa col/fila/px/py.
+#
+#  ⚠️ color_correct NO puede pasar del 45%: el on_boot enciende los 512 LED
+#     en blanco pleno ~1s = 30,7 A escalados. Al 45% son 13,8 A; al 60%
+#     serian 18,4 A y la fuente solo da 18 A.
+# =====================================================================
+
+esphome:
+  name: panel-led
+  friendly_name: Panel LED
+  # Iconos y fuentes viven en esta cabecera, en /config/esphome/ junto a este
+  # YAML. Estaban dentro de los lambdas, pero los arrays `static` de un lambda
+  # no son visibles desde otro y la fuente BIG acababa duplicada en las paginas
+  # de reloj y de tiempo.
+  includes:
+    - panel_led_sprites.h   # dibujos de las animaciones (ver el aviso de dentro)
+    - panel_led_arte.h      # iconos, fuentes y guiones de escena
+  on_boot:
+    priority: -100
+    then:
+      # Fogonazo blanco de ~1s: es el test de diagnostico mas util del montaje.
+      - light.turn_on:
+          id: matriz
+          brightness: 100%
+          red: 100%
+          green: 100%
+          blue: 100%
+      # Si se reinicia de madrugada, que no se quede a tope hasta las 23:00.
+      - delay: 2s
+      - if:
+          condition:
+            switch.is_on: modo_noche
+          then:
+            - light.turn_on:
+                id: matriz
+                brightness: !lambda 'return id(brillo_noche).state / 100.0;'
+          else:
+            - light.turn_on:
+                id: matriz
+                brightness: !lambda 'return id(brillo_normal).state / 100.0;'
+
+esp32:
+  variant: esp32s3
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_key          # genera la tuya: el add-on la ofrece al crear el dispositivo
+
+ota:
+  - platform: esphome
+    # `encryption:` vacio hereda la clave de `api:`. Con esto el dispositivo
+    # rechaza subidas OTA en texto plano y la CLI se niega a enviarlas.
+    encryption:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  use_address: 192.168.1.50      # ⚠️ LA IP DE TU PANEL. Imprescindible si HA corre
+                                 # en una VM o contenedor: desde ahi el mDNS no llega
+  ap:
+    ssid: panel-led Fallback Hotspot
+    password: !secret ap_password  # inventa una; es la red de rescate si falla el WiFi
+
+captive_portal:
+
+globals:
+  - id: rot_contador       # segundos acumulados desde el ultimo cambio de pagina
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: rotaba_antes       # recuerda si la rotacion estaba activa al entrar en modo noche
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: noche_prev         # -1 = sin evaluar aun · 0 = fuera de franja · 1 = dentro
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  # Color del reloj ya resuelto a RGB. Se guarda aqui en vez de leer el estado
+  # del select desde el lambda: en ESPHome 2026.9 la clase Select ya no expone
+  # `.state`, y ademas asi el color se calcula una vez al cambiarlo y no en
+  # cada refresco del display.
+  # ---- Aviso de ubicacion ----
+  - id: destacado          # 0 = ninguno · 1 = persona 1 · 2 = persona 2
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: aviso_ticks        # ticks de 250 ms que le quedan al aviso
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: aviso_pag          # pagina a la que volver: 0 reloj · 1 tiempo · 2 presencia
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: aviso_rotaba       # si la rotacion estaba puesta antes del aviso
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: pagina_idx         # pagina elegida en el select (el aviso NO la toca)
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  # ---- Animacion "Heroe y bicho" ----
+  - id: anim_paso          # -1 = parada · 0..137 = fotograma actual
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  - id: anim_acum          # milisegundos acumulados desde el ultimo fotograma
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: anim_pintar        # true solo en el tick en que toca repintar
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: anim_cual          # 0 = escena 1 · 1 = escena 2
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+  # ---- Hueco rotatorio de la pagina del tiempo ----
+  - id: dato_idx           # contador monotono; el indice real se saca con % n
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: dato_seg           # segundos que lleva el dato actual en pantalla
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: reloj_r
+    type: int
+    restore_value: yes
+    initial_value: '255'
+  - id: reloj_g
+    type: int
+    restore_value: yes
+    initial_value: '190'
+  - id: reloj_b
+    type: int
+    restore_value: yes
+    initial_value: '40'
+
+  # ---------- Selector del pixel a encender (test de pixel andante) ----------
+number:
+  - platform: template
+    name: "Indice de pixel"
+    id: pixel_idx
+    entity_category: diagnostic
+    min_value: 0
+    max_value: 511          # 512 LED: antes estaba en 255 y no llegaba al panel 2
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 0
+    restore_value: true
+
+  - platform: template
+    name: "Segundos de rotacion"
+    id: rot_seg
+    entity_category: config
+    min_value: 3
+    max_value: 300
+    step: 1
+    unit_of_measurement: "s"
+    mode: box
+    optimistic: true
+    initial_value: 12
+    restore_value: true
+
+  - platform: template
+    name: "Umbral de temperatura"
+    id: temp_umbral
+    entity_category: config
+    min_value: 0
+    max_value: 35
+    step: 1
+    unit_of_measurement: "°C"
+    mode: box
+    optimistic: true
+    initial_value: 21
+    restore_value: true
+
+  # ---------- Hueco rotatorio del tiempo ----------
+  - platform: template
+    name: "Tiempo: segundos por dato"
+    id: t_seg_dato
+    entity_category: config
+    min_value: 2
+    max_value: 60
+    step: 1
+    unit_of_measurement: "s"
+    mode: box
+    optimistic: true
+    initial_value: 6
+    restore_value: true
+
+  - platform: template
+    name: "Tiempo: maximo de datos"
+    id: t_max_datos
+    entity_category: config
+    min_value: 1
+    max_value: 9
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 4
+    restore_value: true
+
+  - platform: template
+    name: "Tiempo: umbral de viento"
+    id: t_viento
+    entity_category: config
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "km/h"
+    mode: box
+    optimistic: true
+    initial_value: 20
+    restore_value: true
+
+  - platform: template
+    name: "Tiempo: umbral de racha"
+    id: t_racha
+    entity_category: config
+    min_value: 0
+    max_value: 200
+    step: 5
+    unit_of_measurement: "%"
+    mode: box
+    optimistic: true
+    initial_value: 50
+    restore_value: true
+
+  - platform: template
+    name: "Tiempo: umbral de sensacion"
+    id: t_sensacion
+    entity_category: config
+    min_value: 0
+    max_value: 15
+    step: 1
+    unit_of_measurement: "°C"
+    mode: box
+    optimistic: true
+    initial_value: 3
+    restore_value: true
+
+  # ---------- Brillo ----------
+  # OJO: esto es el `brightness` de la luz, que va de 0 a 1. Despues se le
+  # aplica `color_correct: 45%`, asi que el 100 de este deslizador YA ES el
+  # 45% real de la matriz. Es imposible pasarse por configuracion.
+  - platform: template
+    name: "Brillo normal"
+    id: brillo_normal
+    entity_category: config
+    min_value: 5
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    optimistic: true
+    initial_value: 100
+    restore_value: true
+    set_action:
+      - lambda: 'id(brillo_normal).publish_state(x);'
+      - if:
+          condition:
+            switch.is_off: modo_noche
+          then:
+            - light.turn_on:
+                id: matriz
+                brightness: !lambda 'return x / 100.0;'
+
+  - platform: template
+    name: "Brillo nocturno"
+    id: brillo_noche
+    entity_category: config
+    min_value: 5
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    optimistic: true
+    initial_value: 25
+    restore_value: true
+    set_action:
+      - lambda: 'id(brillo_noche).publish_state(x);'
+      - if:
+          condition:
+            switch.is_on: modo_noche
+          then:
+            - light.turn_on:
+                id: matriz
+                brightness: !lambda 'return x / 100.0;'
+
+  - platform: template
+    name: "Segundos de aviso"
+    id: aviso_seg
+    entity_category: config
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: "s"
+    mode: box
+    optimistic: true
+    initial_value: 5
+    restore_value: true
+
+  - platform: template
+    name: "Animacion ms por pixel"
+    id: anim_ms
+    entity_category: config
+    min_value: 10
+    max_value: 200
+    step: 10          # multiplos del tick de 10 ms, para que el ritmo sea exacto
+    unit_of_measurement: "ms"
+    mode: box
+    optimistic: true
+    initial_value: 50
+    restore_value: true
+
+  # ---------- Franja del modo noche ----------
+  - platform: template
+    name: "Noche: hora inicio"
+    id: noche_ini_h
+    entity_category: config
+    min_value: 0
+    max_value: 23
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 23
+    restore_value: true
+
+  - platform: template
+    name: "Noche: minuto inicio"
+    id: noche_ini_m
+    entity_category: config
+    min_value: 0
+    max_value: 59
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 0
+    restore_value: true
+
+  - platform: template
+    name: "Noche: hora fin"
+    id: noche_fin_h
+    entity_category: config
+    min_value: 0
+    max_value: 23
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 8
+    restore_value: true
+
+  - platform: template
+    name: "Noche: minuto fin"
+    id: noche_fin_m
+    entity_category: config
+    min_value: 0
+    max_value: 59
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 0
+    restore_value: true
+
+  # ---------- Que pagina se muestra ----------
+select:
+  - platform: template
+    name: "Pagina"
+    id: pagina
+    optimistic: true
+    restore_value: true
+    initial_option: "Reloj"
+    options:
+      - "Reloj"
+      - "Tiempo"
+      - "Presencia"
+    set_action:
+      - lambda: |-
+          if      (x == "Reloj")     { id(matriz_display).show_page(id(pag_reloj));     id(pagina_idx) = 0; }
+          else if (x == "Tiempo")    { id(matriz_display).show_page(id(pag_tiempo));    id(pagina_idx) = 1; }
+          else if (x == "Presencia") { id(matriz_display).show_page(id(pag_presencia)); id(pagina_idx) = 2; }
+
+  - platform: template
+    name: "Animacion"
+    id: anim_sel
+    optimistic: true
+    restore_value: true
+    initial_option: "Heroe y bicho"
+    options:
+      - "Heroe y bicho"
+      - "Personaje y tubo"
+    set_action:
+      # Al elegir una animacion se copia SU velocidad al number. Si luego la
+      # retocas a mano se respeta, pero volver a elegirla la devuelve al valor
+      # con el que se diseno la escena.
+      - lambda: |-
+          int cual = (x == "Personaje y tubo") ? 1 : 0;
+          id(anim_cual) = cual;
+          id(anim_ms).publish_state(ANIM_MS[cual]);
+
+  - platform: template
+    name: "Color del reloj"
+    id: color_reloj
+    optimistic: true
+    restore_value: true
+    initial_option: "Ambar"
+    options:
+      - "Ambar"
+      - "Blanco"
+      - "Rojo"
+      - "Naranja"
+      - "Verde"
+      - "Cian"
+      - "Azul"
+      - "Magenta"
+    set_action:
+      - lambda: |-
+          int r = 255, g = 190, b = 40;                       // Ambar (por defecto)
+          if      (x == "Blanco")  { r = 255; g = 255; b = 255; }
+          else if (x == "Rojo")    { r = 255; g =  25; b =   0; }
+          else if (x == "Naranja") { r = 255; g = 110; b =   0; }
+          else if (x == "Verde")   { r =   0; g = 255; b =  60; }
+          else if (x == "Cian")    { r =   0; g = 220; b = 255; }
+          else if (x == "Azul")    { r =  40; g =  90; b = 255; }
+          else if (x == "Magenta") { r = 255; g =  40; b = 180; }
+          id(reloj_r) = r;
+          id(reloj_g) = g;
+          id(reloj_b) = b;
+
+  # ---------- Rotacion automatica entre paginas ----------
+button:
+  # Disparadores del aviso de ubicacion. Pensados para que HA los pulse desde
+  # una automatizacion: toda la coreografia (cambiar de pagina, parpadear,
+  # volver) la lleva el propio panel, para que el parpadeo de 0,5 s no dependa
+  # de la latencia de la red ni se quede a medias si HA se reinicia.
+  - platform: template
+    name: "Reproducir animacion"
+    id: btn_anim
+    on_press:
+      - lambda: |-
+          if (!id(pantalla).state) return;   // pantalla apagada: se ignora
+          if (id(anim_paso) >= 0) return;    // ya se esta reproduciendo
+          if (id(aviso_ticks) > 0) return;   // hay un aviso de ubicacion en curso
+          id(aviso_pag)    = id(pagina_idx);
+          id(aviso_rotaba) = id(rotar).state;
+          id(rotar).turn_off();
+          id(anim_paso) = 0;
+          id(anim_acum) = 0;
+          id(matriz_display).show_page(id(pag_anim));
+
+  - platform: template
+    name: "Aviso ubicacion 1"
+    id: btn_aviso_1
+    on_press:
+      - lambda: |-
+          if (!id(pantalla).state) return;      // pantalla apagada: se ignora
+          if (id(anim_paso) >= 0) return;       // la animacion manda mientras dure
+          if (id(aviso_ticks) <= 0) {           // solo en el PRIMER aviso de una tanda
+            id(aviso_pag)    = id(pagina_idx);
+            id(aviso_rotaba) = id(rotar).state;
+            id(rotar).turn_off();
+          }
+          id(destacado)   = 1;
+          id(aviso_ticks) = (int) (id(aviso_seg).state * 4);
+          id(matriz_display).show_page(id(pag_presencia));
+
+  - platform: template
+    name: "Aviso ubicacion 2"
+    id: btn_aviso_2
+    on_press:
+      - lambda: |-
+          if (!id(pantalla).state) return;
+          if (id(anim_paso) >= 0) return;
+          if (id(aviso_ticks) <= 0) {
+            id(aviso_pag)    = id(pagina_idx);
+            id(aviso_rotaba) = id(rotar).state;
+            id(rotar).turn_off();
+          }
+          id(destacado)   = 2;
+          id(aviso_ticks) = (int) (id(aviso_seg).state * 4);
+          id(matriz_display).show_page(id(pag_presencia));
+
+switch:
+  - platform: template
+    name: "Rotacion automatica"
+    id: rotar
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  - platform: template
+    name: "Modo noche"
+    id: modo_noche
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      # Recuerda si la rotacion estaba puesta, para devolverla por la manana
+      - lambda: 'id(rotaba_antes) = id(rotar).state;'
+      - switch.turn_off: rotar
+      - select.set:
+          id: pagina
+          option: "Reloj"
+      - light.turn_on:
+          id: matriz
+          brightness: !lambda 'return id(brillo_noche).state / 100.0;'
+    turn_off_action:
+      - light.turn_on:
+          id: matriz
+          brightness: !lambda 'return id(brillo_normal).state / 100.0;'
+      - lambda: 'if (id(rotaba_antes)) id(rotar).turn_on();'
+
+  - platform: template
+    name: "Horario nocturno automatico"
+    id: horario_noche
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  # Apagado total. No se usa `light.turn_off` porque el display sigue
+  # escribiendo pixeles cada segundo y el resultado seria impredecible: en
+  # su lugar cada pagina comprueba este interruptor y no dibuja nada, y el
+  # `auto_clear_enabled` deja la matriz en negro.
+  - platform: template
+    name: "Pantalla"
+    id: pantalla
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+  # ---------- La matriz ----------
+light:
+  - platform: esp32_rmt_led_strip
+    id: matriz
+    name: "Matriz"
+    internal: true          # NO se expone a HA: nadie la puede encender entera por error
+    pin: GPIO4
+    num_leds: 512
+    chipset: WS2812
+    channel_colors: GRB      # antes `rgb_order`, deprecado desde 2026.9
+    default_transition_length: 0s
+    restore_mode: ALWAYS_ON
+    gamma_correct: 0
+    color_correct: [45%, 45%, 45%]   # TECHO: ver la nota de arriba
+    effects:
+      - addressable_lambda:
+          name: "Test pixel"
+          update_interval: 100ms
+          lambda: |-
+            it.all() = Color::BLACK;
+            int i = (int) id(pixel_idx).state;
+            if (i >= 0 && i < it.size()) {
+              it[i] = Color(60, 60, 60);
+            }
+
+  # ---------- Datos de Home Assistant ----------
+time:
+  - platform: homeassistant
+    id: ha_time
+    # El horario del modo noche NO va aqui: `on_time` es cron fijo en tiempo de
+    # compilacion y no se podria cambiar desde HA. Se evalua en el interval de
+    # 30 s de mas abajo, contra los cuatro numbers de la franja.
+
+text_sensor:
+  - platform: homeassistant
+    id: tiempo_estado
+    entity_id: weather.aemet
+  - platform: homeassistant
+    id: persona_1
+    entity_id: person.persona_1   # ⚠️ tu entidad de persona
+  - platform: homeassistant
+    id: persona_2
+    entity_id: person.persona_2   # ⚠️ la segunda persona
+
+sensor:
+  - platform: homeassistant
+    id: temp_exterior
+    entity_id: weather.aemet
+    attribute: temperature
+  - platform: homeassistant
+    id: humedad_exterior
+    entity_id: weather.aemet
+    attribute: humidity
+
+  # ---- Datos del hueco rotatorio ----
+  - platform: homeassistant
+    id: prob_tormenta
+    entity_id: sensor.aemet_storm_probability
+  - platform: homeassistant
+    id: lluvia_hora
+    entity_id: sensor.aemet_hourly_forecast_precipitation_probability
+  - platform: homeassistant
+    id: lluvia_dia
+    entity_id: sensor.aemet_daily_forecast_precipitation_probability
+  - platform: homeassistant
+    id: prob_nieve
+    entity_id: sensor.aemet_snow_probability
+  - platform: homeassistant
+    id: viento_medio
+    entity_id: sensor.aemet_wind_speed
+  - platform: homeassistant
+    id: viento_racha
+    entity_id: sensor.aemet_wind_max_speed
+  - platform: homeassistant
+    id: sensacion
+    entity_id: sensor.aemet_temperature_feeling
+  - platform: homeassistant
+    id: max_hoy
+    entity_id: sensor.aemet_daily_forecast_temperature
+  - platform: homeassistant
+    id: min_hoy
+    entity_id: sensor.aemet_daily_forecast_temperature_low
+
+interval:
+  - interval: 30s
+    then:
+      - logger.log:
+          format: "AEMET=%s | %.1f°C | %.0f%% HR || p1=%s | p2=%s"
+          args:
+            - 'id(tiempo_estado).state.c_str()'
+            - 'id(temp_exterior).state'
+            - 'id(humedad_exterior).state'
+            - 'id(persona_1).state.c_str()'
+            - 'id(persona_2).state.c_str()'
+  # El `interval:` de ESPHome se fija al compilar, asi que para poder cambiar
+  # los segundos desde HA se cuenta a mano con un tick de 1 s.
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            switch.is_on: rotar
+          then:
+            - lambda: 'id(rot_contador)++;'
+            - if:
+                condition:
+                  lambda: 'return id(rot_contador) >= (int) id(rot_seg).state;'
+                then:
+                  # Ciclo explicito entre las TRES paginas normales: con
+                  # show_next entraria tambien pag_anim y dejaria el panel
+                  # en negro. Ademas asi pagina_idx queda siempre al dia.
+                  - lambda: |-
+                      id(rot_contador) = 0;
+                      id(pagina_idx) = (id(pagina_idx) + 1) % 3;
+                      if      (id(pagina_idx) == 0) id(matriz_display).show_page(id(pag_reloj));
+                      else if (id(pagina_idx) == 1) id(matriz_display).show_page(id(pag_tiempo));
+                      else                          id(matriz_display).show_page(id(pag_presencia));
+          else:
+            - lambda: 'id(rot_contador) = 0;'
+      # Rotacion del dato del tiempo. Solo corre con esa pagina a la vista: si
+      # estas mirando el reloj, gastar turnos no sirve de nada.
+      - lambda: |-
+          if (!id(pantalla).state || id(pagina_idx) != 1) { id(dato_seg) = 0; return; }
+          id(dato_seg)++;
+          if (id(dato_seg) >= (int) id(t_seg_dato).state) {
+            id(dato_seg) = 0;
+            id(dato_idx)++;
+          }
+
+  # Modo noche por horario. Solo actua al CRUZAR la frontera de la franja, no
+  # continuamente: asi un cambio manual a media noche se respeta hasta el
+  # siguiente cruce, en vez de revertirse a los 30 segundos.
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            switch.is_on: horario_noche
+          then:
+            - lambda: |-
+                auto t = id(ha_time).now();
+                if (!t.is_valid()) return;
+                int ahora = t.hour * 60 + t.minute;
+                int ini   = (int) id(noche_ini_h).state * 60 + (int) id(noche_ini_m).state;
+                int fin   = (int) id(noche_fin_h).state * 60 + (int) id(noche_fin_m).state;
+                bool debe;
+                if      (ini == fin) debe = false;                        // franja nula
+                else if (ini <  fin) debe = (ahora >= ini && ahora < fin);
+                else                 debe = (ahora >= ini || ahora < fin); // cruza medianoche
+                int val = debe ? 1 : 0;
+                if (val != id(noche_prev)) {
+                  id(noche_prev) = val;
+                  if (debe) id(modo_noche).turn_on();
+                  else      id(modo_noche).turn_off();
+                }
+          else:
+            # Al desactivar el horario se olvida el estado, para que al
+            # reactivarlo vuelva a evaluar desde cero.
+            - lambda: 'id(noche_prev) = -1;'
+
+  # Motor del aviso de ubicacion. Solo hace algo mientras hay un aviso vivo:
+  # el resto del tiempo el display sigue refrescando a 1 s como siempre.
+  - interval: 250ms
+    then:
+      - if:
+          condition:
+            lambda: 'return id(aviso_ticks) > 0;'
+          then:
+            - lambda: |-
+                id(aviso_ticks)--;
+                if (id(aviso_ticks) <= 0) {
+                  // Fin del aviso: deshacer todo lo que toco
+                  id(destacado) = 0;
+                  if      (id(aviso_pag) == 1) id(matriz_display).show_page(id(pag_tiempo));
+                  else if (id(aviso_pag) == 2) id(matriz_display).show_page(id(pag_presencia));
+                  else                         id(matriz_display).show_page(id(pag_reloj));
+                  if (id(aviso_rotaba)) id(rotar).turn_on();
+                }
+            # Repintado rapido: sin esto un parpadeo de 0,5 s es irrepresentable
+            # con el display a 1 s. `update()` es protegido en la clase, asi que
+            # hay que usar la accion component.update y no un lambda.
+            - component.update: matriz_display
+
+  # Motor de la animacion. Late a 25 ms y solo repinta en el tick en que
+  # avanza un fotograma: repintar 40 veces por segundo seria tirar el bus RMT
+  # (cada escritura de 512 LED cuesta ~15 ms).
+  - interval: 10ms
+    then:
+      - if:
+          condition:
+            lambda: 'return id(anim_paso) >= 0;'
+          then:
+            - lambda: |-
+                id(anim_pintar) = false;
+                int ms = (int) id(anim_ms).state;
+                if (ms < 10) ms = 10;
+                id(anim_acum) += 10;
+                if (id(anim_acum) < ms) return;
+                id(anim_acum) = 0;
+                id(anim_pintar) = true;
+                id(anim_paso)++;
+                if (id(anim_paso) >= ANIM_LARGO[id(anim_cual)]) {   // fin: deshacer lo que toco
+                  id(anim_paso) = -1;
+                  if      (id(aviso_pag) == 1) id(matriz_display).show_page(id(pag_tiempo));
+                  else if (id(aviso_pag) == 2) id(matriz_display).show_page(id(pag_presencia));
+                  else                         id(matriz_display).show_page(id(pag_reloj));
+                  if (id(aviso_rotaba)) id(rotar).turn_on();
+                }
+            - if:
+                condition:
+                  lambda: 'return id(anim_pintar);'
+                then:
+                  - component.update: matriz_display
+
+display:
+  - platform: addressable_light
+    id: matriz_display
+    addressable_light_id: matriz
+    width: 32
+    height: 16
+    update_interval: 1s
+    auto_clear_enabled: true
+    pixel_mapper: |-
+      // Paneles girados 90 grados ANTIHORARIO respecto al banco (2026-09-20).
+      // Se deshace el giro antes de la serpentina: la columna original de
+      // cada punto es (15 - y) y su fila original es x.
+      int panel = x / 16;          // 0 = panel izquierdo, 1 = derecho
+      int lx    = x - panel * 16;  // columna dentro del panel (0-15)
+      int u     = 15 - y;          // columna original, deshecho el giro
+      int off   = (u % 2 == 0) ? lx : (15 - lx);
+      return panel * 256 + u * 16 + off;
+
+    pages:
+
+      # =============================================================
+      #  PAGINA 1 — RELOJ GRANDE
+      #  4 digitos de 6x11 + dos puntos, a lo ancho del panel.
+      #  x: 1-6 · 8-13 · puntos 15-16 · 18-23 · 25-30
+      #  Barra de segundos en las filas 14-15.
+      # =============================================================
+      - id: pag_reloj
+        lambda: |-
+          if (!id(pantalla).state) return;   // apagado total
+
+          // Color ya resuelto por el set_action del select "Color del reloj"
+          Color c_hora = Color((uint8_t) id(reloj_r),
+                               (uint8_t) id(reloj_g),
+                               (uint8_t) id(reloj_b));
+
+          // La barra de segundos es el mismo tono, a la cuarta parte
+          Color c_barra = Color(c_hora.r / 4, c_hora.g / 4, c_hora.b / 4);
+
+          auto big = [&](int d, int px, int py, Color c) {
+            if (d < 0 || d > 9) return;
+            for (int fila = 0; fila < 11; fila++)
+              for (int col = 0; col < 6; col++)
+                if (BIG[d][fila][col] == '#')
+                  it.draw_pixel_at(px + col, py + fila, c);
+          };
+
+          auto t = id(ha_time).now();
+          if (!t.is_valid()) {
+            // Sin hora de HA: dos guiones en vez de un panel en negro
+            for (int col = 0; col < 6; col++) {
+              it.draw_pixel_at(8 + col, 7, c_barra);
+              it.draw_pixel_at(18 + col, 7, c_barra);
+              it.draw_pixel_at(8 + col, 8, c_barra);
+              it.draw_pixel_at(18 + col, 8, c_barra);
+            }
+            return;
+          }
+
+          big(t.hour   / 10,  1, 2, c_hora);
+          big(t.hour   % 10,  8, 2, c_hora);
+          big(t.minute / 10, 18, 2, c_hora);
+          big(t.minute % 10, 25, 2, c_hora);
+
+          // Dos puntos, parpadeando en los segundos pares = senal de vida
+          if (t.second % 2 == 0) {
+            for (int col = 0; col < 2; col++)
+              for (int fila = 0; fila < 2; fila++) {
+                it.draw_pixel_at(15 + col,  5 + fila, c_hora);
+                it.draw_pixel_at(15 + col,  9 + fila, c_hora);
+              }
+          }
+
+          // Barra de segundos: 32 px = 60 s
+          int ancho = (t.second * 32) / 60;
+          for (int col = 0; col < ancho; col++)
+            it.draw_pixel_at(col, 15, c_barra);
+
+      # =============================================================
+      #  PAGINA 2 — TIEMPO AMPLIADO
+      #  Icono 16x16 a la izquierda · temperatura en 6x11 arriba a la
+      #  derecha · humedad en 3x5 abajo a la derecha.
+      #  Si AEMET esta caido, el icono se pinta en GRIS APAGADO para que
+      #  se distinga de un dia nublado de verdad.
+      # =============================================================
+      - id: pag_tiempo
+        lambda: |-
+          if (!id(pantalla).state) return;   // apagado total
+
+          Color c_calor = Color(255,  80,   0);   // >= umbral: naranja
+          Color c_frio  = Color( 60, 100, 255);   // <  umbral: azul
+          Color c_gris  = Color( 55,  55,  70);
+          Color c_temp  = c_calor;                // se decide abajo con el umbral
+
+          auto big = [&](int d, int px, int py, Color c) {
+            if (d < 0 || d > 9) return;
+            for (int fila = 0; fila < 11; fila++)
+              for (int col = 0; col < 6; col++)
+                if (BIG[d][fila][col] == '#')
+                  it.draw_pixel_at(px + col, py + fila, c);
+          };
+          auto dig = [&](int d, int px, int py, Color c) {
+            if (d < 0 || d > 9) return;
+            for (int fila = 0; fila < 5; fila++)
+              for (int col = 0; col < 3; col++)
+                if (DIG[d][fila] & (1 << (2 - col)))
+                  it.draw_pixel_at(px + col, py + fila, c);
+          };
+
+          // ---------- icono segun AEMET ----------
+          std::string w = id(tiempo_estado).state;
+          bool sin_datos = (w.empty() || w == "unavailable" || w == "unknown");
+          const char** arte = NUBE;
+          if      (w == "sunny")           arte = SOL;
+          else if (w == "clear-night")     arte = LUNA;
+          else if (w == "partlycloudy")    arte = PARCIAL;
+          else if (w == "cloudy")          arte = NUBE;
+          else if (w == "rainy")           arte = LLUVIA;
+          else if (w == "pouring")         arte = CHUBASCO;
+          else if (w == "lightning" ||
+                   w == "lightning-rainy") arte = TORMENTA;
+          else if (w == "snowy" ||
+                   w == "snowy-rainy" ||
+                   w == "hail")            arte = NIEVE;
+          else if (w == "fog")             arte = NIEBLA;
+          else if (w == "windy" ||
+                   w == "windy-variant")   arte = VIENTO;
+
+          for (int fila = 0; fila < 16; fila++) {
+            for (int col = 0; col < 16; col++) {
+              char ch = arte[fila][col];
+              if (ch == '.') continue;
+              Color c;
+              switch (ch) {
+                case 'S': c = Color(255, 170,   0); break;
+                case 'M': c = Color(235, 230, 150); break;
+                case 'N': c = Color(190, 200, 225); break;
+                case 'n': c = Color(120, 130, 175); break;
+                case 'L': c = Color( 40, 120, 255); break;
+                case 'R': c = Color(255, 220,  40); break;
+                case 'B': c = Color(220, 235, 255); break;
+                default:  continue;
+              }
+              if (sin_datos) c = c_gris;   // dato caido: nube en gris apagado
+              it.draw_pixel_at(col, fila, c);
+            }
+          }
+
+          // ---------- temperatura grande, filas 0-10 ----------
+          if (!isnan(id(temp_exterior).state)) {
+            // Umbral configurable desde HA (por defecto 21 grados)
+            c_temp = (id(temp_exterior).state >= id(temp_umbral).state) ? c_calor : c_frio;
+            int tc  = (int) roundf(id(temp_exterior).state);
+            bool neg = tc < 0;
+            int a   = abs(tc);
+            if (neg) {
+              for (int col = 0; col < 4; col++) {
+                it.draw_pixel_at(17 + col, 4, c_temp);
+                it.draw_pixel_at(17 + col, 5, c_temp);
+              }
+              big(a % 10, 24, 0, c_temp);
+            } else if (a >= 10) {
+              big((a / 10) % 10, 17, 0, c_temp);
+              big(a % 10,        24, 0, c_temp);
+            } else {
+              big(a, 20, 0, c_temp);
+            }
+            // simbolo de grados: cuadradito 2x2 arriba del todo
+            it.draw_pixel_at(30, 0, c_temp);
+            it.draw_pixel_at(31, 0, c_temp);
+            it.draw_pixel_at(30, 1, c_temp);
+            it.draw_pixel_at(31, 1, c_temp);
+          }
+
+          // ============ HUECO ROTATORIO, filas 11-15 ============
+          // Se construye la lista de datos que MERECEN turno, por prioridad, y
+          // solo entran los primeros hasta el tope. Casi todos estos valores
+          // valen 0 la mayor parte del año en un clima seco: con un carrusel fijo el
+          // panel se pasaria medio año enseñando ceros por turnos.
+          int lista[9];
+          int n = 0;
+          int tope = (int) id(t_max_datos).state;
+          if (tope < 1) tope = 1;
+          auto mete = [&](int d) { if (n < tope && n < 9) lista[n++] = d; };
+
+          float v_torm  = id(prob_tormenta).state;
+          float v_lluvh = id(lluvia_hora).state;
+          float v_lluvd = id(lluvia_dia).state;
+          float v_nieve = id(prob_nieve).state;
+          float v_medio = id(viento_medio).state;
+          float v_racha = id(viento_racha).state;
+          float v_sens  = id(sensacion).state;
+          float v_real  = id(temp_exterior).state;
+          float v_hum   = id(humedad_exterior).state;
+          float v_max   = id(max_hoy).state;
+          float v_min   = id(min_hoy).state;
+
+          if (!isnan(v_torm)  && v_torm  > 0) mete(0);
+          if (!isnan(v_lluvh) && v_lluvh > 0) mete(1);
+          if (!isnan(v_lluvd) && v_lluvd > 0) mete(2);
+          if (!isnan(v_nieve) && v_nieve > 0) mete(3);
+          if (!isnan(v_racha) && v_racha >= id(t_viento).state) mete(4);
+          if (!isnan(v_sens) && !isnan(v_real)) {
+            float dif = v_sens - v_real;
+            if (dif < 0) dif = -dif;
+            if (dif >= id(t_sensacion).state) mete(5);
+          }
+          if (!isnan(v_hum)) mete(6);        // humedad, maxima y minima entran
+          if (!isnan(v_max)) mete(7);        // siempre que haya dato: son las
+          if (!isnan(v_min)) mete(8);        // que rellenan un dia tranquilo
+
+          if (n == 0) return;
+          int cual = lista[id(dato_idx) % n];
+
+          int valor = 0, sim = 6;
+          Color col = Color(0, 200, 160);
+          switch (cual) {
+            case 0: valor = (int) roundf(v_torm);  sim = 0; col = Color(255, 220,  40); break;
+            case 1: valor = (int) roundf(v_lluvh); sim = 1; col = Color(  0, 200, 255); break;
+            case 2: valor = (int) roundf(v_lluvd); sim = 2; col = Color( 60, 120, 255); break;
+            case 3: valor = (int) roundf(v_nieve); sim = 3; col = Color(220, 235, 255); break;
+            case 4: {
+              // Las rachas superan la media un 30-50% de forma rutinaria, asi
+              // que la racha solo se enseña cuando de verdad es la noticia. Y
+              // se avisa con el color, para no dejar un numero que cambia de
+              // significado sin decirlo: gris = media, blanco = racha.
+              bool es_racha = (!isnan(v_medio) && v_medio > 0 &&
+                               (v_racha - v_medio) / v_medio * 100.0f > id(t_racha).state);
+              valor = (int) roundf(es_racha ? v_racha : v_medio);
+              sim   = 4;
+              col   = es_racha ? Color(245, 245, 250) : Color(170, 175, 190);
+              break;
+            }
+            case 5: valor = (int) roundf(v_sens); sim = 5; col = Color(255, 140,  40); break;
+            case 6: valor = (int) roundf(v_hum);  sim = 6; col = Color(  0, 200, 160); break;
+            case 7: valor = (int) roundf(v_max);  sim = 7; col = Color(255, 150,   0); break;
+            case 8: valor = (int) roundf(v_min);  sim = 8; col = Color( 60, 130, 255); break;
+          }
+
+          // Los valores se capan a 99. Con dos digitos el simbolo puede ser de
+          // 7 de ancho, y eso es lo que lo hace reconocible; reservando sitio
+          // para el 100 se queda en 4 y no se distingue un copo de un rayo.
+          int av = valor < 0 ? -valor : valor;
+          if (av > 99) av = 99;
+          if (valor < 0) {                      // minima bajo cero: signo menos
+            for (int c2 = 0; c2 < 3; c2++) it.draw_pixel_at(17 + c2, 13, col);
+            dig(av % 10, 21, 11, col);
+          } else if (av >= 10) {
+            dig((av / 10) % 10, 17, 11, col);
+            dig(av % 10,        21, 11, col);
+          } else {
+            dig(av % 10, 21, 11, col);
+          }
+          for (int fila = 0; fila < 5; fila++)
+            for (int c2 = 0; c2 < 7; c2++)
+              if (TSIM[sim][fila][c2] == '#')
+                it.draw_pixel_at(25 + c2, 11 + fila, col);
+
+      # =============================================================
+      #  PAGINA 3 — PRESENCIA
+      #  Dos iconos de 16x16, uno por persona.
+      #    Izquierda = persona 1 · Derecha = persona 2
+      #  La FORMA dice que tipo de sitio es; el COLOR dice cual en concreto:
+      #    casa verde    = Casa (nuestro hogar, estado "home")
+      #    casa magenta  = Zona A
+      #    casa ambar    = Zona B
+      #    cruz roja     = Trabajo (trabajo de la persona 2)
+      #    libro turquesa= Universidad
+      #    coche azul    = not_home (fuera, en ningun sitio conocido)
+      #    interrogante  = sin dato
+      #  Las cadenas de zona se comparan LITERALMENTE: si renombras una zona
+      #  en HA hay que cambiarla aqui tambien.
+      # =============================================================
+      - id: pag_presencia
+        lambda: |-
+          if (!id(pantalla).state) return;   // apagado total
+
+          Color c_casa   = Color(  0, 255,  60);   // Casa (hogar)
+          Color c_zona_a   = Color(255,  50, 170);   // Zona A
+          Color c_trenca = Color(255, 165,   0);   // Zona B
+          Color c_hosp   = Color(255,  40,  30);   // Trabajo
+          Color c_uni    = Color(  0, 210, 180);   // Universidad (turquesa)
+          Color c_fuera  = Color( 60, 120, 255);   // not_home
+          Color c_gris   = Color( 55,  55,  70);   // sin dato
+
+          auto resolver = [&](std::string s, const char** &arte, Color &c) {
+            // `unknown` y `not_home` son el mismo caso para una persona: "no
+            // esta en ningun sitio con nombre". El interrogante queda solo para
+            // `unavailable`, que no es estar por ahi sino que HA no tiene dato.
+            if (s.empty() || s == "unavailable")   { arte = INTERR; c = c_gris;   }
+            // "home" es el estado literal de la zona principal de HA. Se acepta
+            // tambien "Casa" por si esa zona no fuera la zona home de HA.
+            else if (s == "home" || s == "Casa")   { arte = CASA;   c = c_casa;   }
+            else if (s == "Zona A")             { arte = CASA;   c = c_zona_a;   }
+            else if (s == "Zona B")            { arte = CASA;   c = c_trenca; }
+            else if (s == "Trabajo")  { arte = CRUZ;   c = c_hosp;   }
+            else if (s == "Universidad")           { arte = LIBRO;  c = c_uni;    }
+            else                                   { arte = COCHE;  c = c_fuera;  }
+          };
+
+          auto pinta = [&](const char** arte, int px, Color c) {
+            for (int fila = 0; fila < 16; fila++)
+              for (int col = 0; col < 16; col++)
+                if (arte[fila][col] == '#')
+                  it.draw_pixel_at(px + col, fila, c);
+          };
+
+          const char** a1; Color c1;
+          const char** a2; Color c2;
+          resolver(id(persona_1).state, a1, c1);   // izquierda
+          resolver(id(persona_2).state, a2, c2);   // derecha
+          // Parpadeo del aviso: cada tick son 250 ms, asi que 2 ticks encendido
+          // y 2 apagado dan el medio segundo pedido.
+          bool oculto = ((id(aviso_ticks) / 2) % 2) == 1;
+          if (!(id(destacado) == 1 && oculto)) pinta(a1,  0, c1);
+          if (!(id(destacado) == 2 && oculto)) pinta(a2, 16, c2);
+
+
+      # =============================================================
+      #  PAGINA 4 — ANIMACIONES  (no esta en el select de paginas: se
+      #  dispara con el boton y se reproduce sola)
+      #
+      #  Cual se reproduce lo decide el select "Animacion" via anim_cual.
+      #  Los sprites, guiones y paletas estan en panel_led_arte.h. Las dos
+      #  escenas se afinaron en un simulador antes de tocar el firmware
+      #  (herramientas/simular_escena.py).
+      # =============================================================
+      - id: pag_anim
+        lambda: |-
+          if (!id(pantalla).state) return;   // apagado total
+          int n = id(anim_paso);
+          if (n < 0) return;                 // animacion parada
+
+          // Un solo pintor para las dos escenas. `pal` solo afecta a R/P/B,
+          // que son los colores del bicho y lo unico que cambia con los
+          // destellos de dano; el resto de caracteres son colores fijos.
+          auto pinta = [&](const char* const* arte, int an, int px, bool espejo,
+                           const uint8_t (*pal)[3]) {
+            for (int fila = 0; fila < 16; fila++) {
+              const char* f = arte[fila];
+              for (int c = 0; c < an; c++) {
+                char ch = f[c];
+                if (ch == '.') continue;
+                int dx = px + (espejo ? (an - 1 - c) : c);
+                if (dx < 0 || dx > 31) continue;
+                Color col;
+                switch (ch) {
+                  case 'V': col = Color(128, 208,  16); break;   // tunica de el heroe
+                  case 'O': col = Color(200,  76,  12); break;
+                  case 'R': col = Color(pal[0][0], pal[0][1], pal[0][2]); break;
+                  case 'P': col = Color(pal[1][0], pal[1][1], pal[1][2]); break;
+                  case 'B': col = Color(pal[2][0], pal[2][1], pal[2][2]); break;
+                  case 'M': col = Color(181,  49,  32); break;   // rojo de el personaje
+                  case 'C': col = Color(234, 158,  34); break;   // piel
+                  case 'D': col = Color(107, 109,   0); break;   // oscuro
+                  case 'G': col = Color(  0, 168,   0); break;   // verdes del tubo
+                  case 'g': col = Color(128, 208,  16); break;
+                  case 'd': col = Color(  0,  68,   0); break;
+                  default: continue;
+                }
+                it.draw_pixel_at(dx, fila, col);
+              }
+            }
+          };
+          const uint8_t (*NORMAL)[3] = MOB_PAL[0];
+
+          // =================================================================
+          //  ESCENA 0 — heroe y bicho (138 pasos)
+          // =================================================================
+          if (id(anim_cual) == 0) {
+            // 1: el bicho cruza hacia la izquierda (espejado)
+            if (n < 49) {
+              pinta(((n / 4) % 2) ? BICHO_B : BICHO_A, 16, 32 - n, true, NORMAL);
+              return;
+            }
+            n -= 49;
+            if (n < 10) return;                       // 2: pausa en negro
+            n -= 10;
+            // 3: vuelve perseguido, los dos andando
+            if (n < 33) {
+              int mx = -16 + n;
+              pinta(((n / 4) % 2) ? BICHO_B : BICHO_A, 16, mx,      false, NORMAL);
+              pinta(((n / 4) % 2) ? HEROE_B   : HEROE_A,   16, mx - 17, false, NORMAL);
+              return;
+            }
+            n -= 33;
+            // 4: el heroe se planta y tira el mandoble
+            if (n < 14) {
+              int mx = ESP_MX[n];
+              if (mx < 32)
+                pinta((((33 + n) / 4) % 2) ? BICHO_B : BICHO_A, 16, mx,
+                      false, MOB_PAL[ESP_PAL[n]]);
+              int po = ESP_POSE[n];
+              pinta(ATAQUE[po], ATAQUE_AN[po], 0, false, NORMAL);
+              return;
+            }
+            n -= 14;
+            // 5: recoge la ataque y sale andando por la derecha
+            pinta((((33 + n) / 4) % 2) ? HEROE_B : HEROE_A, 16, n, false, NORMAL);
+            return;
+          }
+
+          // =================================================================
+          //  ESCENA 1 — personaje y tubo (85 pasos)
+          //  El personaje se dibuja SIEMPRE antes que el tubo: asi ella lo va
+          //  tapando conforme entra, que es como lo hace el juego.
+          // =================================================================
+          const int PJ_X = 4, TUBO_FIN = 20;
+          // 1: entra andando, todavia sin tubo
+          if (n < 20) {
+            pinta(PASOS[(n / 4) % 3], 16, -16 + n, false, NORMAL);
+            return;
+          }
+          // 2: el personaje deja de avanzar y el tubo entra deslizandose.
+          //    Es el desplazamiento de camara: el personaje se queda quieto
+          //    en pantalla y es el mundo el que se mueve hacia el.
+          if (n < 33) {
+            pinta(PASOS[(n / 4) % 3], 16, PJ_X, false, NORMAL);
+            pinta(TUBO, 16, 32 - (n - 20), false, NORMAL);
+            return;
+          }
+          // 3: se planta un momento en la boca
+          if (n < 39) {
+            pinta(QUIETO, 16, PJ_X, false, NORMAL);
+            pinta(TUBO, 16, TUBO_FIN, false, NORMAL);
+            return;
+          }
+          // 4: se mete despacio, a dos fotogramas por pixel
+          if (n < 73) {
+            int paso = (n - 39) / 2;
+            pinta(PASOS[((33 + paso) / 4) % 3], 16, PJ_X + paso, false, NORMAL);
+            pinta(TUBO, 16, TUBO_FIN, false, NORMAL);
+            return;
+          }
+          // 5: la tubo se queda sola
+          pinta(TUBO, 16, TUBO_FIN, false, NORMAL);

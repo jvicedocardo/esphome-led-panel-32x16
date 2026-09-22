@@ -1,0 +1,67 @@
+# =====================================================================
+#  Automatizaciones de Home Assistant para el panel LED
+#  Pegar en Ajustes -> Automatizaciones -> nueva -> editar en YAML.
+#
+#  ⚠️ Cambia `person.persona_1` y el entity_id del boton por los tuyos.
+#     Los de los botones los ves en Herramientas para desarrolladores ->
+#     Estados, filtrando por `panel_led`. OJO: si asignaste el dispositivo
+#     a un area y aceptaste el renombrado, HA le antepone el area y seran
+#     algo como `button.salon_panel_led_aviso_ubicacion_1`.
+# =====================================================================
+
+# --- Aviso al cambiar de ubicacion (una por persona) ---
+alias: Panel — aviso ubicacion persona 1
+triggers:
+  - trigger: state
+    entity_id: person.persona_1
+conditions:
+  # Normaliza `not_home` y `unknown` al mismo valor y solo deja pasar el
+  # disparo si el estado NORMALIZADO cambio de verdad: asi los rebotes de
+  # GPS entre esos dos no disparan nada. Y descarta `unavailable`, que es
+  # el movil perdiendo conexion, no un cambio de ubicacion.
+  - condition: template
+    value_template: >
+      {% set n = {'not_home': 'transito', 'unknown': 'transito'} %}
+      {% set a = trigger.from_state.state %}
+      {% set b = trigger.to_state.state %}
+      {{ b != 'unavailable' and n.get(a, a) != n.get(b, b) }}
+actions:
+  - action: button.press
+    target:
+      entity_id: button.panel_led_aviso_ubicacion_1
+mode: single
+
+---
+# --- Animacion al llegar a casa (opcional) ---
+# El evento con mas garantia de publico: una animacion que nadie ve no ha
+# ocurrido. Si la usas, EXCLUYE `home` de la automatizacion de aviso de
+# arriba, o al llegar dispararian las dos y en el firmware son mutuamente
+# excluyentes: ganaria la que HA ejecute primero, y pareceria aleatorio.
+alias: Panel — animacion al llegar a casa
+triggers:
+  - trigger: state
+    entity_id:
+      - person.persona_1
+      - person.persona_2
+    to: "home"
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.from_state.state not in ['home', 'unknown', 'unavailable'] }}
+  - condition: time
+    after: "08:00:00"
+    before: "23:00:00"
+  - condition: state
+    entity_id: switch.panel_led_pantalla
+    state: "on"
+actions:
+  - action: select.select_option
+    target:
+      entity_id: select.panel_led_animacion
+    data:
+      option: "Personaje y tubo"
+  - action: button.press
+    target:
+      entity_id: button.panel_led_reproducir_animacion
+mode: single
+max_exceeded: silent
