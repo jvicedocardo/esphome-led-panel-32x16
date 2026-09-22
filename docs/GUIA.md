@@ -65,7 +65,7 @@ de ajustar `hueco_union` en el modelo 3D.
 - **Soldadura básica.** Hay que soldar un conector de aviación de 4 pines y unos
   cuantos cables a una placa perforada. Nada fino.
 - **Cableado de 230 V.** La fuente es de bornes abiertos y hay que conectarle la
-  red. Si esto te da respeto, que te lo haga alguien con manos — el respeto está
+  230 V. Si esto te da respeto, que te lo haga alguien con manos — el respeto está
   bien puesto, y no es sitio para aprender.
 
 **Lo que NO hace falta:**
@@ -91,18 +91,16 @@ horas de impresora que corren en paralelo.
 | **Cable 1 mm²** | H05V-K flexible, rojo y negro, 3 m de cada | [rojo](https://diotronic.com/de-1mm2/2510-cable-1x1-rojo) · [negro](https://diotronic.com/de-1mm2/2515-cable-1x1-negro). 2,50 mm de diámetro exterior: **ese dato importa**, ver el GX16 |
 | **2 × WAGO 221-415** | Conector de palanca de 5 vías | [Diotronic](https://diotronic.com/regletas-conectores/970-221-415-conector-wago-5-vias). Una regleta de clemas hace lo mismo |
 | **Portafusible + fusible** | Portafusible aéreo de cuchilla + **fusible de 10 A** | [portafusible](https://diotronic.com/fusibles-portafusibles/1543-portafusible-aereo-para-coche) · [fusibles](https://diotronic.com/fusibles-portafusibles/1534-fusible-coche-de-15a) (pide de 10 A, no de 15 — ver más abajo) |
-| **2 × pasahilos M12** | Pasamuros IP68 para cable de 4,6-7,6 mm | [Diotronic](https://diotronic.com/pasamuros-y-prensaestopa/2835-pasahilos-ip68-metr-4-6-7-6mm). Uno para la red y otro para la salida |
-| **Conector GX16** | `GX16-4` — conector de aviación de 4 pines, macho de panel + hembra de cable | La unión desmontable entre la caja y el marco |
 | **Malla trenzada** | `Malla trenzada expansible 6 mm` | Convierte los cuatro hilos en un cable redondo único |
 | **Difusor** | Metacrilato **blanco opal de 2 mm**, cortado a 323,2 × 163,2 mm | Es lo que convierte 512 puntos en pixel-art. Cualquier tienda de plásticos te lo corta |
-| **Cable de red** | Reciclado de un ordenador viejo | Tiene que ser **C13 con tierra** y funda de **≤ 7,6 mm** (`3G0.75` sirve, `3G1.0` puede no entrar en el pasahilos) |
+| **Cable de alimentación 230 V** | El cable de corriente de un ordenador de sobremesa viejo | Tiene que ser **IEC C13 con tierra** — los C7 de figura de ocho solo llevan dos hilos. La sección viene impresa en la funda: `3G0.75` va de sobra para los 0,4 A que consume esto |
 
 ### Del cajón de componentes
 
 | | |
 |---|---|
 | Resistencia de **330 Ω** | En serie con la línea de datos |
-| 2 × condensador **100 µF / 10 V** (o 1000 µF) | Uno en la entrada de cada panel |
+| **1 × condensador 1000 µF / 10 V por panel** | En la entrada de cada panel, entre +5 V y GND. Si no lo encuentras, **2 × 100 µF en paralelo** por panel hacen el apaño — en paralelo suman, así que dan 200 µF. **En paralelo, no en serie**: en serie darían 50 y sería peor que uno solo |
 | Placa perforada ~70 × 30 mm | Para el ESP32 |
 | Tira de pines hembra | Para enzocalar el ESP32 y poder cambiarlo |
 | Tornillos **M3×6 autorroscantes** | 8 para el bisel. **M3×6, no más largos**: asoman al alojamiento y tropiezan con la rejilla |
@@ -129,6 +127,16 @@ error fácil de cometer porque 15 A "parece" razonable al lado de una fuente de 
   raíl de 5 V y el ESP32 para que al enchufar el USB no hubiera dos fuentes
   peleándose. Se acabó quitando (ver la sección de montaje). Si lo pones, mejor;
   si no, hay una regla que cumplir.
+- **Conector GX16.** Es la unión desmontable entre la caja y el marco, y está bien
+  tenerla — pero **es un componente relativamente difícil de encontrar** y solo hace
+  falta si quieres poder separar las dos piezas. Si vas a dejar el cable fijo, o la
+  fuente va detrás del propio panel o empotrada en la pared, **suéldalo todo directo
+  y te lo ahorras**. El marco tiene el taladro de todas formas; puedes dejarlo tapado
+  o pasar el cable por él.
+- **Pasahilos o prensaestopas.** Se pusieron para evitar tirones en la entrada de
+  230 V, pero **la caja impresa de la fuente ya trae una ranura para bridar** el cable
+  de alimentación y el mallado. Una brida apretada sobre la funda exterior hace el
+  mismo trabajo y no cuesta nada.
 
 ---
 
@@ -142,11 +150,11 @@ error fácil de cometer porque 15 A "parece" razonable al lado de una fuente de 
 | Impresora 3D, cama ≥ 240×240 | |
 | Destornilladores finos | Los bornes de la fuente son M3 |
 
-**Punteras necesarias:** de **0,75 mm²** para los tres hilos de red y de **1 mm²**
+**Punteras necesarias:** de **0,75 mm²** para los tres hilos de 230 V y de **1 mm²**
 para el lado de continua. Si el surtido no trae de 0,75, las de 1 mm² valen — el
 casquillo deforma de sobra al crimpar.
 
-> **Calibra la crimpadora antes de tocar el cable de red.** Estas herramientas
+> **Calibra la crimpadora antes de tocar el cable de alimentación.** Estas herramientas
 > traen un tornillo de ajuste y vienen desreguladas de fábrica a menudo. Haz dos o
 > tres crimpados de prueba en un recorte: el casquillo debe quedar cuadrado, con
 > las indentaciones marcadas, sin grietas, y al tirar fuerte el hilo no sale.
@@ -264,6 +272,10 @@ El chip USB de estas placas suele ser un **CH343**, que aparece como
 
 ## 7. Electrónica y cableado
 
+> 📐 **[Diagrama visual del cableado](cableado.html)** — esquema completo con los tres
+> dominios, la lista de materiales con precios y el orden de montaje. Es una página HTML
+> suelta: se abre en cualquier navegador, sin conexión, y se imprime bien.
+
 Hay **tres dominios eléctricos separados** y conviene no mezclarlos mentalmente:
 los 230 V que solo existen dentro de la caja de la fuente, los 5 V de potencia, y
 los datos de 3,3 V que solo existen dentro del marco.
@@ -282,9 +294,9 @@ serigrafía de tu unidad.
 - **Punteras crimpadas** en los tres hilos. Nunca estañados.
 - **Deja la tierra 1-2 cm más larga** que fase y neutro. Si el cable recibe un tirón
   y se sueltan los bornes, la tierra es la última en irse.
-- **Antitirón**: pasa una brida por una ranura del chasis y apriétala sobre la
-  **funda exterior**, antes de que se separen los hilos. El tirón lo debe aguantar la
-  funda, no los tornillos.
+- **Antitirón**: pasa una brida por la ranura de la caja —o por una rejilla del propio
+  chasis de la fuente— y apriétala sobre la **funda exterior**, antes de que se separen
+  los hilos. El tirón lo debe aguantar la funda, nunca los tornillos de los bornes.
 - **Corta el extremo C13** del cable reciclado y quédate con el del enchufe. Antes de
   pelar, comprueba que asoman **tres** hilos.
 
@@ -320,10 +332,17 @@ independiente hacía falta igual, llevar dos pares desde la caja sale gratis y
 **reparte la corriente**: cada par mueve ~3 A en vez de ~6, y la caída se queda en la
 mitad. A 1 metro son 0,10 V, despreciables.
 
-### El umbilical y el GX16
+### El umbilical
 
-El conector GX16 tiene un prensacable de **6,5 mm**, y una manguera de 4×1 mm² mide
-8,6: no pasa. La solución son **cuatro hilos sueltos** de 1 mm² (2,50 mm cada uno),
+> Esta sección describe el montaje **con** conector GX16. Si decides soldar el cable
+> directo —perfectamente válido, ver *Lo que NO hace falta comprar*—, sáltate lo del
+> prensacable y el pinout: te queda simplemente pasar los cuatro hilos por la ranura de
+> la caja y soldarlos en su sitio. La malla y el marcado de pares siguen mereciendo la
+> pena igual.
+
+
+Si usas el GX16, su prensacable mide **6,5 mm**, y una manguera de cuatro conductores
+de 1 mm² mide 8,6: no pasa. La solución son **cuatro hilos sueltos** de 1 mm² (2,50 mm cada uno),
 que juntos dan un círculo envolvente de 6,04 mm y entran con holgura, metidos por
 fuera en **malla trenzada** para que quede un cable redondo único.
 
@@ -736,6 +755,7 @@ README.md                       presentación del proyecto
 LICENSE                         MIT para el código, CC BY-SA para lo demás
 docs/
   GUIA.md                       este documento
+  cableado.html                 diagrama visual del cableado, se abre sin conexión
   tiempo_simbolos.png           los nueve símbolos del tiempo a tamaño real
 firmware/
   panel-led.yaml                el firmware

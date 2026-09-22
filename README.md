@@ -49,10 +49,13 @@ automatic page rotation and a screen-off switch.
 👉 **[Full build guide](docs/GUIA.md)** *(Spanish)* — bill of materials with links,
 parts to print, wiring, assembly, calibration and troubleshooting.
 
+📐 **[Wiring diagram](docs/cableado.html)** — standalone HTML page, opens offline.
+
 ## What is in here
 
 ```
 docs/GUIA.md              the build guide, start to finish (Spanish)
+docs/cableado.html        visual wiring diagram (offline HTML)
 firmware/                 the ESPHome YAML and the drawing headers
 homeassistant/            automations and control dashboard
 impresion3d/              parametric OpenSCAD model and the STLs

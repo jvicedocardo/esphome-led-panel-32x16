@@ -1,0 +1,662 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Cableado — Panel LED 32×16 (ESP32-S3 + WS2812B)</title>
+<style>
+  :root {
+    --paper:      #e9ebe4;
+    --surface:    #f4f6ef;
+    --surface-2:  #dfe3d8;
+    --panel-bg:   #14181a;
+    --ink:        #131a16;
+    --ink-2:      #4c564f;
+    --ink-3:      #79837b;
+    --rule:       #c8cec0;
+    --accent:     #9d6c17;
+    --accent-bg:  #f0e5cb;
+    --ok:         #2f7d4f;
+    --ok-bg:      #dcecdf;
+    --w-l:    #7a4a2b;
+    --w-n:    #2f6fbf;
+    --w-pe:   #77901f;
+    --w-pos:  #cf3a2f;
+    --w-gnd:  #2b302c;
+    --w-data: #1a8b56;
+    --grid:   #ffffff1a;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0e1411; --surface:#151c18; --surface-2:#1d2621;
+      --ink:#dde4dc; --ink-2:#9aa79d; --ink-3:#6e7c72; --rule:#2a352f;
+      --accent:#d9a648; --accent-bg:#2a2214; --ok:#6dc78d; --ok-bg:#18291d;
+      --w-l:#b47f52; --w-n:#5c9be8; --w-pe:#a8c23a;
+      --w-pos:#ef5b4c; --w-gnd:#8f9c92; --w-data:#3fc788;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#0e1411; --surface:#151c18; --surface-2:#1d2621;
+    --ink:#dde4dc; --ink-2:#9aa79d; --ink-3:#6e7c72; --rule:#2a352f;
+    --accent:#d9a648; --accent-bg:#2a2214; --ok:#6dc78d; --ok-bg:#18291d;
+    --w-l:#b47f52; --w-n:#5c9be8; --w-pe:#a8c23a;
+    --w-pos:#ef5b4c; --w-gnd:#8f9c92; --w-data:#3fc788;
+  }
+  :root[data-theme="light"] {
+    --paper:#e9ebe4; --surface:#f4f6ef; --surface-2:#dfe3d8;
+    --ink:#131a16; --ink-2:#4c564f; --ink-3:#79837b; --rule:#c8cec0;
+    --accent:#9d6c17; --accent-bg:#f0e5cb; --ok:#2f7d4f; --ok-bg:#dcecdf;
+    --w-l:#7a4a2b; --w-n:#2f6fbf; --w-pe:#77901f;
+    --w-pos:#cf3a2f; --w-gnd:#2b302c; --w-data:#1a8b56;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 44px 22px 96px; display: flex; flex-direction: column; gap: 52px; }
+
+  h1, h2, h3, .eyebrow, .chip, th, .num { font-family: var(--mono); font-weight: 600; }
+  h1 { font-size: clamp(24px, 4.2vw, 36px); line-height: 1.18; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+  h2 { font-size: 15px; letter-spacing: 0.11em; text-transform: uppercase; margin: 0; color: var(--ink); }
+  h3 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 10px; color: var(--ink-2); }
+  .eyebrow { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3); }
+  p { margin: 0; max-width: 66ch; }
+  .lede { color: var(--ink-2); font-size: 17px; max-width: 62ch; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+
+  header { display: flex; flex-direction: column; gap: 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip {
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px 11px 4px; border: 1px solid var(--rule); border-radius: 2px;
+    background: var(--surface); color: var(--ink-2);
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .chip::before { content: ""; width: 14px; height: 3px; background: var(--dot, var(--ink-3)); border-radius: 2px; }
+
+  section { display: flex; flex-direction: column; gap: 18px; }
+  .sechead { display: flex; align-items: baseline; gap: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
+  .sechead .eyebrow { margin-left: auto; }
+
+  .callout { background: var(--accent-bg); border-left: 3px solid var(--accent); padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+  .callout p { max-width: 74ch; }
+  .callout strong { font-family: var(--mono); font-weight: 600; }
+  .callout.good { background: var(--ok-bg); border-left-color: var(--ok); }
+
+  figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+  .diagram-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); padding: 10px; }
+  .diagram-scroll svg { display: block; min-width: 940px; width: 100%; height: auto; }
+  figcaption { font-size: 13.5px; color: var(--ink-3); font-family: var(--mono); }
+
+  .tscroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; min-width: 560px; }
+  th {
+    text-align: left; font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase;
+    color: var(--ink-3); padding: 0 14px 8px 0; border-bottom: 1px solid var(--rule); white-space: nowrap;
+  }
+  td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--ink-2); }
+  td:first-child { color: var(--ink); }
+  td code, .m { font-family: var(--mono); font-size: 13px; }
+  td code { background: var(--surface-2); padding: 1px 5px; border-radius: 2px; white-space: nowrap; }
+  .domain { border-left: 3px solid var(--dom); padding-left: 16px; }
+  .qty { text-align: right; padding-right: 20px; white-space: nowrap; }
+  .strike td:first-child { text-decoration: line-through; color: var(--ink-3); }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: s; }
+  ol.steps li { display: grid; grid-template-columns: 46px 1fr; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--rule); counter-increment: s; }
+  ol.steps li::before { content: counter(s, decimal-leading-zero); font-family: var(--mono); font-size: 13px; color: var(--accent); padding-top: 2px; }
+  ol.steps li > div { display: flex; flex-direction: column; gap: 4px; }
+  ol.steps b { font-family: var(--mono); font-weight: 600; font-size: 14px; letter-spacing: 0.02em; }
+  ol.steps span { color: var(--ink-2); font-size: 15px; }
+
+  ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 9px; color: var(--ink-2); }
+  ul.plain li { max-width: 72ch; }
+  ul.plain b { color: var(--ink); font-family: var(--mono); font-weight: 600; font-size: 14px; }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 26px; }
+  .card { background: var(--surface); border: 1px solid var(--rule); padding: 18px 20px; }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 30px 16px 70px; gap: 40px; }
+    ol.steps li { grid-template-columns: 34px 1fr; gap: 10px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">Panel LED informativo · Home Assistant</span>
+    <h1>Cableado del panel 32 × 16<br>ESP32-S3 + WS2812B + LRS-100-5</h1>
+    <p class="lede">Dos conjuntos separados: el marco que cuelga de la pared con los paneles y el ESP32, y una caja aparte junto al enchufe con la fuente y los 230 V. Entre ambos, cuatro hilos de 1 mm² dentro de una malla trenzada, con un GX16 como unión desmontable.</p>
+    <div class="chips">
+      <span class="chip" style="--dot: var(--w-l)">230 V AC · solo en la caja</span>
+      <span class="chip" style="--dot: var(--w-pos)">5 V DC · 4 × 1 mm² · 1 m</span>
+      <span class="chip" style="--dot: var(--w-data)">Datos · corto, dentro del marco</span>
+    </div>
+  </header>
+
+  <div class="callout good">
+    <p><strong>MONTADO Y FUNCIONANDO — 2026-09-20.</strong> Panel colgado en la pared mostrando hora, tiempo y presencia desde Home Assistant. Fuente ajustada a <b>5,10 V</b> en vacío y <b>5,08 V</b> medidos en los paneles. Este diagrama ya refleja el montaje real, con las correcciones que aparecieron durante la instalación.</p>
+    <p><strong>El level shifter se cae de la lista.</strong> La matriz responde perfectamente a los 3,3 V del ESP32 con la resistencia de 330 Ω, y en este montaje ambos comparten marco, así que el cable de datos es de centímetros.</p>
+  </div>
+
+  <div class="callout">
+    <p><strong>Por qué la fuente va fuera del marco.</strong> Metida dentro habría hecho falta ventilación por convección, PETG en vez de PLA por temperatura, y tener 230 V dentro de una pieza colgada de la pared. Fuera, el marco baja de ~50 mm a <strong>15–20 mm</strong> de fondo y se queda con solo 5 V dentro.</p>
+    <p><strong>Dos pares, cuatro hilos, una sola malla.</strong> Como cada panel necesita su propia inyección de todas formas, llevar dos pares sale gratis y reparte la corriente: cada uno mueve ~3 A en vez de ~6 A, y la caída se queda en la mitad. Los cuatro hilos van dentro de una <strong>malla trenzada</strong>, así que por fuera se ve un único cable redondo.</p>
+  </div>
+
+  <div class="callout good">
+    <p><strong>Sí se usa el GX16.</strong> Se llegó a descartar por una hoja de características genérica que daba copas de soldadura de 0,8 mm — pero <strong>medidas sobre los conectores reales: 2 mm</strong>, donde entra sin problema hasta 1,5 mm². En la serie GX16 el tamaño de copa depende del número de pines, y los de pocos pines llevan contactos bastante más gordos. De corriente va sobrado: 7 A por pin frente a los 3 A que pasan.</p>
+    <p><strong>El GX16 es opcional.</strong> Es un componente relativamente difícil de encontrar, y solo hace falta si quieres poder separar la caja del marco. Si vas a dejar el cable fijo, o la fuente va detrás del propio panel o empotrada en la pared, suelda los cuatro hilos directos y te lo ahorras.</p>
+    <p>Si lo usas, lo que condiciona es su <strong>prensacable trasero, de 6,5 mm</strong>. Por eso no se usa manguera —la de 4×1 mm² mide 8,6 mm y no pasa— sino <strong>cuatro hilos sueltos H05V-K de 1 mm²</strong>, de 2,50 mm cada uno: los cuatro juntos dan un círculo envolvente de <strong>6,04 mm</strong> y entran con holgura. La malla trenzada va por fuera y <strong>termina justo antes del conector</strong>, rematada con termorretráctil que hace tope contra la tuerca.</p>
+  </div>
+
+  <figure>
+    <div class="diagram-scroll">
+      <svg viewBox="0 0 1280 1010" role="img" aria-label="Diagrama de cableado del panel LED, con la fuente en caja aparte">
+        <defs>
+          <pattern id="gridA" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse" patternTransform="translate(700,190)">
+            <rect x="0" y="0" width="15" height="15" fill="none" stroke="var(--grid)" stroke-width="1"/>
+          </pattern>
+          <pattern id="gridB" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse" patternTransform="translate(980,190)">
+            <rect x="0" y="0" width="15" height="15" fill="none" stroke="var(--grid)" stroke-width="1"/>
+          </pattern>
+        </defs>
+
+        <style>
+          .box   { fill: var(--surface); stroke: var(--ink-3); stroke-width: 1.5; }
+          .boxlt { fill: var(--surface-2); stroke: var(--ink-3); stroke-width: 1; }
+          .zone  { fill: none; stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 8 6; opacity: .75; }
+          .t     { font-family: var(--mono); font-size: 11px; fill: var(--ink-2); }
+          .t9    { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-3); }
+          .tt    { font-family: var(--mono); font-size: 13px; font-weight: 600; fill: var(--ink); letter-spacing: .06em; }
+          .th    { font-family: var(--mono); font-size: 10.5px; font-weight: 600; fill: var(--ink-3); letter-spacing: .14em; }
+          .w     { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+          .wd    { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+          .wac   { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+        </style>
+
+        <!-- ============ LEYENDA ============ -->
+        <rect class="boxlt" x="20" y="16" width="380" height="124" rx="2"/>
+        <text class="th" x="36" y="38">LEYENDA</text>
+        <line x1="36" y1="56" x2="66" y2="56" class="wac" stroke="var(--w-l)"/>
+        <text class="t" x="76" y="60">Marrón — Fase (L)</text>
+        <line x1="216" y1="56" x2="246" y2="56" class="wac" stroke="var(--w-n)"/>
+        <text class="t" x="256" y="60">Azul — Neutro (N)</text>
+        <line x1="36" y1="76" x2="66" y2="76" class="wac" stroke="var(--w-pe)"/>
+        <text class="t" x="76" y="80">Am./verde — Tierra</text>
+        <line x1="216" y1="76" x2="246" y2="76" class="w" stroke="var(--w-pos)"/>
+        <text class="t" x="256" y="80">Rojo 1 mm² — +5 V</text>
+        <line x1="36" y1="96" x2="66" y2="96" class="w" stroke="var(--w-gnd)"/>
+        <text class="t" x="76" y="100">Negro 1 mm² — GND</text>
+        <line x1="216" y1="96" x2="246" y2="96" class="wd" stroke="var(--w-data)"/>
+        <text class="t" x="256" y="100">Verde 24 AWG — datos</text>
+        <circle cx="42" cy="120" r="4" fill="var(--ink)"/>
+        <text class="t9" x="54" y="124">= conexión</text>
+        <path d="M222,128 A6,6 0 0 0 222,116" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+        <text class="t9" x="234" y="124">= cruce SIN conexión</text>
+
+        <!-- ============ PRESUPUESTO ============ -->
+        <rect class="boxlt" x="420" y="16" width="380" height="124" rx="2"/>
+        <text class="th" x="436" y="38">PRESUPUESTO DE CORRIENTE</text>
+        <text class="t" x="436" y="60">512 LED · blanco 100 %</text>
+        <text class="t" x="784" y="60" text-anchor="end" fill="var(--w-pos)">30,7 A</text>
+        <text class="t" x="436" y="80">Fuente LRS-100-5</text>
+        <text class="t" x="784" y="80" text-anchor="end">18 A</text>
+        <text class="t" x="436" y="100">Brillo moderado + pixel-art</text>
+        <text class="t" x="784" y="100" text-anchor="end" fill="var(--w-data)">2–6 A</text>
+        <text class="t9" x="436" y="124">Limita el brillo en ESPHome: nunca la pantalla entera en blanco.</text>
+
+        <!-- ============ ZONAS ============ -->
+        <rect class="zone" x="20" y="280" width="390" height="680" rx="6"/>
+        <text class="th" x="34" y="304" fill="var(--accent)">CAJA DE LA FUENTE</text>
+        <text class="t9" x="34" y="320">junto al enchufe · aquí viven los 230 V</text>
+
+        <rect class="zone" x="480" y="170" width="770" height="790" rx="6"/>
+        <text class="th" x="494" y="196" fill="var(--accent)">MARCO EN LA PARED</text>
+        <text class="t9" x="494" y="212">paneles + ESP32 · solo 5 V · fondo 15-20 mm</text>
+
+        <!-- ============ PANELES ============ -->
+        <text class="th" x="960" y="160" text-anchor="middle">MATRIZ 32 × 16 · 512 LED WS2812B</text>
+
+        <rect x="700" y="190" width="240" height="240" fill="var(--panel-bg)" stroke="var(--ink-3)" stroke-width="1.5"/>
+        <g id="artA"></g>
+        <rect x="700" y="190" width="240" height="240" fill="url(#gridA)" stroke="none"/>
+        <text class="t" x="820" y="182" text-anchor="middle">PANEL 1 · 16×16</text>
+
+        <rect x="980" y="190" width="240" height="240" fill="var(--panel-bg)" stroke="var(--ink-3)" stroke-width="1.5"/>
+        <g id="artB"></g>
+        <rect x="980" y="190" width="240" height="240" fill="url(#gridB)" stroke="none"/>
+        <text class="t" x="1100" y="182" text-anchor="middle">PANEL 2 · 16×16</text>
+
+        <rect x="694" y="409" width="12" height="12" fill="var(--w-data)"/>
+        <text class="t9" x="688" y="402" text-anchor="end">DIN</text>
+        <rect x="934" y="409" width="12" height="12" fill="var(--w-data)"/>
+        <text class="t9" x="946" y="402">DOUT</text>
+        <rect x="974" y="409" width="12" height="12" fill="var(--w-data)"/>
+        <path class="wd" stroke="var(--w-data)" d="M940,415 H980"/>
+
+        <rect x="754" y="426" width="12" height="10" fill="var(--w-pos)"/>
+        <rect x="794" y="426" width="12" height="10" fill="var(--w-gnd)"/>
+        <text class="t9" x="760" y="450" text-anchor="middle">+5V</text>
+        <text class="t9" x="800" y="464" text-anchor="middle">GND</text>
+        <rect x="1034" y="426" width="12" height="10" fill="var(--w-pos)"/>
+        <rect x="1074" y="426" width="12" height="10" fill="var(--w-gnd)"/>
+        <text class="t9" x="1040" y="450" text-anchor="middle">+5V</text>
+        <text class="t9" x="1080" y="464" text-anchor="middle">GND</text>
+
+        <!-- condensadores -->
+        <g stroke-linecap="round">
+          <line x1="760" y1="490" x2="772" y2="490" stroke="var(--ink-2)" stroke-width="2"/>
+          <line x1="772" y1="477" x2="772" y2="503" stroke="var(--ink-2)" stroke-width="3"/>
+          <line x1="781" y1="480" x2="781" y2="500" stroke="var(--ink-2)" stroke-width="3"/>
+          <line x1="781" y1="490" x2="800" y2="490" stroke="var(--ink-2)" stroke-width="2"/>
+          <text class="t9" x="766" y="470" text-anchor="middle">+</text>
+          <line x1="1040" y1="490" x2="1052" y2="490" stroke="var(--ink-2)" stroke-width="2"/>
+          <line x1="1052" y1="477" x2="1052" y2="503" stroke="var(--ink-2)" stroke-width="3"/>
+          <line x1="1061" y1="480" x2="1061" y2="500" stroke="var(--ink-2)" stroke-width="3"/>
+          <line x1="1061" y1="490" x2="1080" y2="490" stroke="var(--ink-2)" stroke-width="2"/>
+          <text class="t9" x="1046" y="470" text-anchor="middle">+</text>
+          <text class="t9" x="1094" y="494">1000 µF · 10 V en cada panel</text>
+          <text class="t9" x="1094" y="508">(o 2 × 100 µF en paralelo)</text>
+        </g>
+
+        <!-- ============ ESP32 ============ -->
+        <rect class="box" x="500" y="520" width="190" height="210" rx="3"/>
+        <text class="tt" x="595" y="605" text-anchor="middle">ESP32-S3</text>
+        <text class="t" x="595" y="625" text-anchor="middle">N16R8</text>
+        <text class="t9" x="595" y="648" text-anchor="middle">deja el USB accesible</text>
+        <text class="t9" x="595" y="662" text-anchor="middle">para recuperación</text>
+        <rect x="654" y="514" width="10" height="12" fill="var(--w-data)"/>
+        <text class="t9" x="646" y="540" text-anchor="end">GPIO 4</text>
+        <rect x="554" y="724" width="12" height="10" fill="var(--w-pos)"/>
+        <text class="t9" x="560" y="716" text-anchor="middle">5V</text>
+        <rect x="614" y="724" width="12" height="10" fill="var(--w-gnd)"/>
+        <text class="t9" x="620" y="716" text-anchor="middle">GND</text>
+
+        <!-- datos -->
+        <path class="wd" stroke="var(--w-data)" d="M659,520 V415 H700"/>
+        <rect x="648" y="444" width="22" height="34" rx="2" fill="var(--surface)" stroke="var(--w-data)" stroke-width="2"/>
+        <text class="t9" x="640" y="464" text-anchor="end" fill="var(--w-data)">R1 · 330 Ω</text>
+
+        <!-- ============ FUENTE ============ -->
+        <rect class="box" x="50" y="340" width="350" height="140" rx="2"/>
+        <text class="tt" x="70" y="376">MEAN WELL LRS-100-5</text>
+        <text class="t" x="70" y="398">5 V · 18 A · 90 W</text>
+        <text class="t" x="70" y="418">Entrada 100–240 V AC</text>
+        <circle cx="352" cy="440" r="14" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="352" y1="440" x2="361" y2="433" stroke="var(--accent)" stroke-width="2"/>
+        <text class="t9" x="352" y="468" text-anchor="middle" fill="var(--accent)">V-ADJ</text>
+
+        <rect class="boxlt" x="70" y="480" width="320" height="36"/>
+        <g class="t9" text-anchor="middle" fill="var(--ink-2)">
+          <line x1="116" y1="480" x2="116" y2="516" stroke="var(--rule)"/>
+          <line x1="162" y1="480" x2="162" y2="516" stroke="var(--rule)"/>
+          <line x1="207" y1="480" x2="207" y2="516" stroke="var(--rule)"/>
+          <line x1="253" y1="480" x2="253" y2="516" stroke="var(--rule)"/>
+          <line x1="299" y1="480" x2="299" y2="516" stroke="var(--rule)"/>
+          <line x1="344" y1="480" x2="344" y2="516" stroke="var(--rule)"/>
+          <text x="93"  y="503" fill="var(--w-l)">L</text>
+          <text x="139" y="503" fill="var(--w-n)">N</text>
+          <text x="184" y="503" fill="var(--w-pe)">PE</text>
+          <text x="230" y="503">−V</text>
+          <text x="276" y="503">−V</text>
+          <text x="321" y="503" fill="var(--w-pos)">+V</text>
+          <text x="367" y="503" fill="var(--w-pos)">+V</text>
+        </g>
+
+        <!-- entrada 230 V -->
+        <rect class="box" x="35" y="720" width="85" height="60" rx="6"/>
+        <circle cx="63" cy="740" r="5" fill="var(--ink-3)"/>
+        <circle cx="63" cy="760" r="5" fill="var(--ink-3)"/>
+        <text class="t9" x="77" y="744">L</text>
+        <text class="t9" x="77" y="764">N</text>
+        <text class="t9" x="77" y="800" text-anchor="middle">SCHUKO</text>
+        <path class="wac" stroke="var(--ink-3)" d="M120,750 H150"/>
+        <rect class="box" x="150" y="726" width="90" height="48" rx="2"/>
+        <text class="t9" x="195" y="746" text-anchor="middle">INTERRUPTOR</text>
+        <text class="t9" x="195" y="760" text-anchor="middle">BIPOLAR (opc.)</text>
+        <path class="wac" stroke="var(--w-pe)" d="M240,736 H184 V516"/>
+        <path class="wac" stroke="var(--w-n)"  d="M240,750 H139 V516"/>
+        <path class="wac" stroke="var(--w-l)"  d="M240,764 H93  V516"/>
+
+        <!-- fusible + WAGOs -->
+        <path class="w" stroke="var(--w-pos)" d="M321,516 V540 H367 V590"/>
+        <rect x="352" y="548" width="30" height="30" rx="3" fill="var(--surface)" stroke="var(--w-pos)" stroke-width="2"/>
+        <path d="M360,570 L364,556 L370,570 L374,556" fill="none" stroke="var(--w-pos)" stroke-width="2"/>
+        <text class="t9" x="392" y="567">F1 · 10 A</text>
+
+        <path class="w" stroke="var(--w-gnd)" d="M230,516 V590"/>
+        <text class="t9" x="58" y="556">el 2º +V y el 2º −V</text>
+        <text class="t9" x="58" y="570">se quedan sin usar</text>
+
+        <rect x="310" y="590" width="85" height="55" rx="2" fill="var(--surface-2)" stroke="var(--w-pos)" stroke-width="1.5"/>
+        <text class="t9" x="352" y="622" text-anchor="middle" fill="var(--ink-2)">WAGO +5V</text>
+        <rect x="200" y="590" width="100" height="55" rx="2" fill="var(--surface-2)" stroke="var(--w-gnd)" stroke-width="1.5"/>
+        <text class="t9" x="250" y="622" text-anchor="middle" fill="var(--ink-2)">WAGO GND</text>
+
+        <!-- ============ LOS DOS PARES ============ -->
+        <path class="w" stroke="var(--w-pos)" d="M370,645 V830 H760"/>
+        <path class="w" stroke="var(--w-gnd)" d="M265,645 V860 H800"/>
+        <path class="w" stroke="var(--w-pos)" d="M330,645 V842 A8,8 0 0 0 330,858 V890 H1040"/>
+        <path class="w" stroke="var(--w-gnd)" d="M225,645 V920 H1080"/>
+
+        <text class="t9" x="516" y="822">PAR 1 → panel 1</text>
+        <text class="t9" x="516" y="912">PAR 2 → panel 2</text>
+        <text class="t9" x="200" y="812">4 hilos H05V-K 1 mm² (2,50 mm c/u)</text>
+        <text class="t9" x="200" y="826">dentro de malla trenzada · tirada ~1 m</text>
+
+        <!-- subidas a los paneles -->
+        <path class="w" stroke="var(--w-pos)" d="M760,830 V436"/>
+        <path class="w" stroke="var(--w-gnd)" d="M800,860 V436"/>
+        <path class="w" stroke="var(--w-pos)" d="M1040,890 V436"/>
+        <path class="w" stroke="var(--w-gnd)" d="M1080,920 V436"/>
+
+        <!-- alimentación del ESP32 -->
+        <path class="w" stroke="var(--w-pos)" d="M560,830 V730"/>
+        <circle cx="560" cy="830" r="4.5" fill="var(--w-pos)"/>
+        <text class="t9" x="542" y="788" text-anchor="end" fill="var(--accent)">directo, sin diodo</text>
+        <text class="t9" x="542" y="802" text-anchor="end" fill="var(--accent)">nunca USB con la fuente ON</text>
+        <path class="w" stroke="var(--w-gnd)" d="M620,860 V842 A8,8 0 0 0 620,826 V730"/>
+        <circle cx="620" cy="860" r="4.5" fill="var(--w-gnd)"/>
+
+        <!-- ============ CONECTOR GX16 ============ -->
+        <rect x="458" y="808" width="44" height="130" rx="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>
+        <line x1="480" y1="808" x2="480" y2="938" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3"/>
+        <circle cx="480" cy="830" r="4.5" fill="var(--w-pos)"/>
+        <circle cx="480" cy="860" r="4.5" fill="var(--w-gnd)"/>
+        <circle cx="480" cy="890" r="4.5" fill="var(--w-pos)"/>
+        <circle cx="480" cy="920" r="4.5" fill="var(--w-gnd)"/>
+        <text class="t9" x="480" y="800" text-anchor="middle">unión desmontable</text>
+        <text class="t9" x="480" y="954" text-anchor="middle" fill="var(--accent)">GX16 · 4 pines</text>
+        <text class="t9" x="480" y="968" text-anchor="middle" fill="var(--accent)">copas 2 mm · prensacable 6,5 mm</text>
+      </svg>
+    </div>
+    <figcaption>Los dos pares salen de las WAGO, cruzan el GX16 y llegan cada uno a su panel. El ESP32 pincha del par 1 ya dentro del marco, a través de D1.</figcaption>
+  </figure>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sechead"><h2>Reparto en dos cajas</h2><span class="eyebrow">qué va dónde</span></div>
+    <div class="cols">
+      <div class="card">
+        <h3>Marco en la pared</h3>
+        <ul class="plain">
+          <li>Los <b>dos paneles</b> de 16 × 16, uno al lado del otro</li>
+          <li>El <b>ESP32-S3</b>, con la R de 330 Ω y el diodo D1</li>
+          <li>Un <b>condensador de 1000 µF</b> en la entrada de cada panel (o 2 × 100 µF en paralelo si no lo encuentras)</li>
+          <li>La <b>rejilla separadora + difusor</b> de metacrilato opal</li>
+          <li>El <b>GX16 pasamuros</b> atornillado a la pared del marco, que hace de entrada y de sujeción</li>
+          <li>Solo hay <b>5 V</b> aquí dentro. Nada de red. Se puede imprimir todo en <b>PLA</b></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Caja de la fuente</h3>
+        <ul class="plain">
+          <li>La <b>LRS-100-5</b> con sus bornes tapados</li>
+          <li>La <b>entrada de 230 V</b>: cable de alimentación de un ordenador viejo, con tierra, sujeto con una <b>brida sobre la funda exterior</b> por la ranura de la caja. Interruptor si lo pones</li>
+          <li>El <b>fusible</b> y las dos <b>WAGO</b> de reparto</li>
+          <li>La <b>mitad hembra del GX16</b>, o el cable saliendo por otro pasahilos</li>
+          <li>Imprímela en <b>PETG</b>, o usa una caja de derivación de ferretería</li>
+          <li>Colócala cerca del enchufe, con ranuras para que circule el aire</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sechead"><h2>Caída de tensión</h2><span class="eyebrow">mide la distancia antes de comprar cable</span></div>
+    <p>Peor caso de ~6 A totales. La fila resaltada es este montaje: <b>1 metro de tirada, dos pares de 1 mm²</b>.</p>
+    <div class="tscroll">
+      <table>
+        <thead><tr><th>Distancia fuente → marco</th><th>Un solo par 1 mm² (6 A)</th><th>Dos pares 1 mm² (3 A cada uno)</th></tr></thead>
+        <tbody>
+          <tr><td><b>1 m ← el tuyo</b></td><td>0,21 V</td><td><b>0,10 V</b></td></tr>
+          <tr><td>2 m</td><td>0,41 V</td><td>0,21 V</td></tr>
+          <tr><td>3 m</td><td>0,62 V</td><td>0,31 V</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--ink-3);font-size:14px">Con 0,10 V de caída no hay nada que compensar. El ajuste final del V-ADJ midiendo en el panel sigue siendo buena idea, pero saldrá prácticamente igual que el ajuste en vacío.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sechead"><h2>Conexiones</h2><span class="eyebrow">borne a borne</span></div>
+
+    <div class="domain" style="--dom: var(--w-l)">
+      <h3>230 V AC — solo dentro de la caja de la fuente</h3>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Desde</th><th>Hasta</th><th>Cable</th></tr></thead>
+          <tbody>
+            <tr><td>Fase (hilo marrón)</td><td>Borne <code>AC/L</code></td><td>H05VV-F 3G0,75 mm², vía interruptor</td></tr>
+            <tr><td>Neutro (hilo azul)</td><td>Borne <code>AC/N</code></td><td>vía interruptor</td></tr>
+            <tr><td>Tierra (amarillo/verde)</td><td>Borne <code>⏚ / FG</code></td><td>Directo, sin pasar por el interruptor</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="domain" style="--dom: var(--w-pos)">
+      <h3>5 V DC — dos pares de la caja al marco</h3>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Desde</th><th>Hasta</th><th>Cable</th></tr></thead>
+          <tbody>
+            <tr><td>Borne <code>+V</code> (<b>uno solo basta</b>)</td><td>Fusible 10 A → WAGO <code>+5V</code></td><td>1 mm² rojo, corto</td></tr>
+            <tr><td>Borne <code>−V</code> (<b>uno solo basta</b>)</td><td>WAGO <code>GND</code></td><td>1 mm² negro, corto</td></tr>
+            <tr><td><b>PAR 1</b> — WAGO <code>+5V</code> y <code>GND</code></td><td>Par pelado de <b>5V/GND</b> del <b>panel 1</b></td><td>2 hilos H05V-K 1 mm², vía GX16</td></tr>
+            <tr><td><b>PAR 2</b> — WAGO <code>+5V</code> y <code>GND</code></td><td>Par pelado de <b>5V/GND</b> del <b>panel 2</b></td><td>Los otros 2 hilos, por el mismo GX16</td></tr>
+            <tr><td>Raíl del par 1, ya dentro del marco</td><td>Pin <code>5V</code> del ESP32, <b>directo</b></td><td>24 AWG. El 1N5819 se eliminó en el montaje — ver abajo</td></tr>
+            <tr><td>Raíl del par 1, ya dentro del marco</td><td>Pin <code>GND</code> del ESP32</td><td>24 AWG</td></tr>
+            <tr><td>1000 µF (o 2 × 100 µF)</td><td>Entre +5 V y GND en la entrada de <em>cada</em> panel</td><td>Patilla larga a +5 V; la banda del cuerpo va a GND</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="domain" style="--dom: var(--w-data)">
+      <h3>Datos — 3,3 V directos, todo dentro del marco</h3>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Desde</th><th>Hasta</th><th>Nota</th></tr></thead>
+          <tbody>
+            <tr><td>ESP32-S3 <code>GPIO 4</code></td><td><code>R1 330 Ω</code> → <code>DIN</code> del panel 1</td><td>Unos centímetros. Tréncalo con un hilo de GND</td></tr>
+            <tr><td>Panel 1 <code>DOUT</code></td><td>Panel 2 <code>DIN</code></td><td>Los JST de 3 pines maceen directamente</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:var(--ink-3);font-size:14px;margin-top:10px">La masa común queda resuelta sola: el ESP32 toma su GND del mismo par que alimenta el panel 1.</p>
+    </div>
+
+    <div class="domain" style="--dom: var(--accent)">
+      <h3>Pinout del GX16 — tal y como quedó soldado</h3>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Pin</th><th>Señal</th><th>Hilo</th></tr></thead>
+          <tbody>
+            <tr><td><b>1</b></td><td><code>+5V</code> panel 1</td><td>Rojo par 1, desde WAGO <code>+5V</code></td></tr>
+            <tr><td><b>2</b></td><td><code>GND</code> panel 1</td><td>Negro par 1, desde WAGO <code>GND</code></td></tr>
+            <tr><td><b>3</b></td><td><code>GND</code> panel 2</td><td>Negro par 2, desde WAGO <code>GND</code></td></tr>
+            <tr><td><b>4</b></td><td><code>+5V</code> panel 2</td><td>Rojo par 2, desde WAGO <code>+5V</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="color:var(--ink-3);font-size:14px;margin-top:10px">⚠️ El patrón <b>no es simétrico</b>: 1-2 son <span class="m">+ −</span> pero 3-4 son <span class="m">− +</span>. Las dos mitades del conector son imágenes especulares, así que se suelda <b>por el número grabado junto a cada copa</b>, nunca por la posición. Los WS2812B no sobreviven a polaridad invertida: antes de conectar los paneles, pitar continuidad de cada hilo hasta su WAGO y medir <b>+5,10 V</b> en el extremo libre con la punta roja en el hilo rojo.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sechead"><h2>Material</h2><span class="eyebrow">todo comprado · 2026-08-05</span></div>
+
+    <div class="domain" style="--dom: var(--ok)">
+      <h3>Pedido en Diotronic — 35,35 €</h3>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Cant.</th><th>Producto</th><th class="qty">Precio</th><th>Nota</th></tr></thead>
+          <tbody>
+            <tr><td class="qty">1</td><td><b>Fuente MeanWell LRS-100-5</b></td><td class="qty">22,69 €</td><td>5 V · 18 A · 90 W, sin ventilador, ajustable por potenciómetro</td></tr>
+            <tr><td class="qty">3 m</td><td><b>Cable H05V-K 1 mm² rojo</b></td><td class="qty">3,00 €</td><td>Flexible multifilar clase 5 · <b>2,50 mm de diámetro exterior</b>, el dato que hace que los cuatro juntos pasen por el GX16</td></tr>
+            <tr><td class="qty">3 m</td><td><b>Cable H05V-K 1 mm² negro</b></td><td class="qty">3,00 €</td><td>Ídem. 2 m necesarios de cada color + 1 m de reserva</td></tr>
+            <tr><td class="qty">2</td><td><b>WAGO 221-415</b></td><td class="qty">2,90 €</td><td>5 vías, 0,2-4 mm², 32 A. Reparto de +5 V y GND</td></tr>
+            <tr><td class="qty">1</td><td><b>Portafusible aéreo</b></td><td class="qty">1,68 €</td><td>Cuchilla estándar, ya trae 100 mm de cable de 1 mm² en cada extremo</td></tr>
+            <tr><td class="qty">3</td><td><b>Fusible cuchilla 15 A</b> → <b>cambiar por 10 A</b></td><td class="qty">0,90 €</td><td>⚠️ El de 15 A (azul) <b>no protege</b> el cable de 1 mm², que aguanta ~13,5 A. La regla es fusible ≤ 80 % de la capacidad del cable → <b>10 A</b> (rojo). Van en el lado de 5 V, nunca en el de red</td></tr>
+            <tr class="strike"><td class="qty">2</td><td><b>Pasahilos M12 IP68</b></td><td class="qty">1,18 €</td><td>⚠️ <b>Resultaron innecesarios.</b> La caja impresa de la fuente ya trae ranura para bridar el cable de alimentación y el mallado, y una brida apretada sobre la funda hace el mismo antitirón</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="domain" style="--dom: var(--ok)">
+      <h3>Pedido en Amazon</h3>
+      <div class="tscroll">
+        <table>
+          <thead><tr><th>Producto</th><th>Nota</th></tr></thead>
+          <tbody>
+            <tr><td><b>Kit crimpadora Preciva + 1230 punteras</b></td><td>Trinquete autoajustable, 0,25-6 mm², crimpado cuadrado. Incluye 100 punteras de 1 mm² y 100 de 0,5 mm², las dos únicas medidas del proyecto. <b>Calibra la presión con 2-3 crimpados de prueba antes de tocar el cable de red</b></td></tr>
+            <tr><td><b>Malla trenzada Alex Tech 6 mm · 7,5 m</b></td><td>Sobre un haz de 6,04 mm queda tensa. Al cortarla, sella el extremo con un toque de mechero o se deshilacha</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="domain" style="--dom: var(--ink-3)">
+      <h3>Reciclado y ya en casa</h3>
+      <ul class="plain">
+        <li><b>Cable de 230 V</b>: se reutiliza el cable de alimentación de un ordenador. Comprobar que sea <b>C13 con tierra</b> — los C7 de figura de ocho solo llevan dos hilos — La sección viene impresa en la funda.</li>
+        <li><b>GX16</b> (copas de 2 mm, prensacable de 6,5 mm, medidos) · <b>metacrilato blanco opal</b> para el difusor · <b>multímetro</b> · <b>R 330 Ω</b> · <b>1N5819</b> · <b>condensadores de 100 µF</b> · <b>cable de 24 AWG</b> para los datos · <b>termorretráctil</b> · placa perforada, breadboard, dupont, pines y filamento.</li>
+      </ul>
+    </div>
+
+    <div class="domain" style="--dom: var(--accent)">
+      <h3>Los condensadores de entrada</h3>
+      <ul class="plain">
+        <li>Lo correcto es <b>un electrolítico de 1000 µF / 10 V por panel</b>, entre +5 V y GND en su entrada. Patilla larga al positivo, la banda del cuerpo al negativo.</li>
+        <li><b>Si no lo tienes a mano</b>, valen <b>2 × 100 µF en paralelo</b> por panel, que suman 200 µF. ⚠️ <b>En paralelo, no en serie</b>: en serie las capacidades se reducen y dos de 100 µF darían 50, peor que uno solo.</li>
+        <li><b>Por qué el apaño aguanta.</b> La LRS-100-5 ya lleva sus propios condensadores de salida, la tirada es de 1 metro —poca inductancia, poca falta hace la reserva local— y los paneles llevan <b>un 100 nF por LED</b> de fábrica, los <span class="m">104</span> serigrafiados.</li>
+        <li><b>Se pueden cambiar después sin deshacer nada</b>: van soldados entre +5 V y GND en la entrada del panel. Menos de 1 € en el próximo pedido.</li>
+        <li><b>Señales de que harían falta</b>: parpadeo de los primeros LEDs al encender, píxeles aleatorios en el arranque, o inestabilidad cuando la pantalla cambia mucho de golpe. Si no ves eso, no hay nada que arreglar.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sechead"><h2>Orden de montaje</h2><span class="eyebrow">y de ajuste</span></div>
+    <ol class="steps">
+      <li><div><b>Calibra la crimpadora</b><span>Dos o tres crimpados de prueba en un recorte de cable, tirando fuerte de la puntera. Si se sale, aprieta un punto el tornillo de ajuste y repite. Vienen desreguladas de fábrica y no quieres descubrirlo en el borne de fase.</span></div></li>
+      <li><div><b>Cablea los 230 V con todo desenchufado</b><span><b>Punteras crimpadas</b> en los tres hilos —nunca estañados, el estaño hace <em>cold flow</em> bajo el tornillo y el apriete se afloja con los meses—, tornillos a fondo, tierra al borne <span class="m">⏚</span>, y la manguera sujeta con el pasahilos M12. Tapa la regleta antes de acercarte a un enchufe.</span></div></li>
+      <li><div><b>Ajuste inicial en vacío</b><span>Sin nada en la salida, mide entre <span class="m">+V</span> y <span class="m">−V</span> y deja el <span class="m">V-ADJ</span> en <span class="m">5,05 V</span>. Desenchufa.</span></div></li>
+      <li><div><b>Monta el reparto y los dos pares</b><span>Fusible, las dos WAGO, y de ahí los cuatro hilos al GX16. Mete la malla trenzada antes de soldar el conector, y <b>marca los dos pares</b> con un anillo de termorretráctil de color: dentro de la malla todos los rojos son iguales. Los electrolíticos, <b>dos de 100 µF en paralelo</b> por panel, y respeta la polaridad.</span></div></li>
+      <li><div><b>Comprueba antes de conectar datos</b><span>Enchufa y mide en la entrada de cada panel: ~5 V que no caiga. Desenchufa.</span></div></li>
+      <li><div><b>Cierra el marco</b><span>ESP32, R de 330 Ω y D1 dentro. GPIO 4 → resistencia → DIN, trenzado con un hilo de GND. Deja el USB accesible.</span></div></li>
+      <li><div><b>Ajuste FINAL de tensión, con todo montado</b><span>Pon el panel en el caso más caro (un icono de nube, ~90 píxeles casi blancos) y mide <b>en la entrada de un panel</b>, no en la fuente. Si baja de <span class="m">4,8 V</span>, sube el V-ADJ hasta que el panel lea <span class="m">~5,0 V</span>. <b>Nunca pases de 5,3 V medidos en vacío.</b></span></div></li>
+      <li><div><b>Sube el brillo — con techo</b><span>Sube el <span class="m">color_correct</span> del 15 % al <b>45 %</b>, y no más. El <span class="m">on_boot</span> enciende los 512 LEDs en blanco pleno durante ~1 s: son 30,7 A escalados por <span class="m">color_correct</span>, o sea <b>13,8 A al 45 %</b> pero <b>18,4 A al 60 %</b>, por encima de los 18 A de la fuente. En régimen normal el pixel-art tira 5-6 A y esto da igual — el límite lo pone solo ese segundo del arranque. Para pasar de 45 % hay que cambiar antes el <span class="m">on_boot</span>.</span></div></li>
+      <li><div><b>Monta la rejilla y el difusor</b><span>Es lo que convierte 512 puntos de luz en pixel-art. Revisa los tonos otra vez con el difusor puesto: cambia bastante cómo se percibe el color.</span></div></li>
+    </ol>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <div class="sechead"><h2>Detalles que importan</h2><span class="eyebrow">y trampas ya pisadas</span></div>
+    <div class="cols">
+      <div class="card">
+        <h3>El diodo D1 se eliminó</h3>
+        <ul class="plain">
+          <li>Durante el montaje el pin <span class="m">5V</span> del ESP32 medía <b>5,05 V</b> cuando con el <b>1N5819</b> en serie debía dar ~4,6 V. Un Schottky cae ~0,3 V a cualquier corriente, nunca 0,03: estaba puenteado o en corto, y era otra soldadura sospechosa en una placa que va encastrada.</li>
+          <li>Se quitó, y el <span class="m">+V</span> va <b>directo al pin 5V</b>. El regulador gana holgura y la placa va más estable: <b>3,3 V clavados</b> medidos.</li>
+          <li>⚠️ <b>Se pierde la protección del puerto USB.</b> Regla nueva: <b>nunca enchufar el USB con la fuente encendida</b> — la fuente empujaría 5,08 V hacia el puerto del portátil, y el USB intentaría mover 512 LEDs (0,5 A solo en reposo). Para flashear o leer logs por USB, <b>desconectar antes los dos pares del GX16</b>. Hay etiqueta puesta en la tapa de la caja.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Los paneles quedaron girados 90°</h3>
+        <ul class="plain">
+          <li>Al montarlos en la bandeja quedaron un cuarto de vuelta en <b>sentido antihorario</b> respecto a la orientación del banco de pruebas.</li>
+          <li><b>No se desmontó nada</b>: se deshace el giro en el <span class="m">pixel_mapper</span>, porque la columna original de cada punto pasa a ser <span class="m">15 - y</span> y su fila original <span class="m">x</span>.</li>
+          <li>Verificado contra las cuatro esquinas del mapeo de agosto: índice 0 → abajo-izquierda, 15 → abajo-derecha, 255 → arriba-izquierda. El YAML completo está en <span class="m">~/Documentos/panel-led-esphome.yaml</span>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Masa común, no negociable</h3>
+        <ul class="plain">
+          <li>Fuente, ESP32 y los dos paneles comparten <b>GND</b>. Aquí sale gratis, porque el ESP32 toma su masa del mismo par que alimenta el panel 1.</li>
+          <li>Comprobado en el banco de pruebas: al soltar sin querer el GND, la matriz se llenó de LEDs aleatorios al instante.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>El brillo es un presupuesto</h3>
+        <ul class="plain">
+          <li>En ESPHome el brillo global se limita con <b>color_correct</b>, no con <span class="m">brightness</span>, y hay que poner <b>gamma_correct: 0</b> para que el pixel-art salga con los colores que escribes.</li>
+          <li>Los iconos de nube son el caso más caro: ~90 píxeles de gris casi blanco.</li>
+          <li>Si el panel parpadea o se reinicia al aparecer un icono grande, has tocado el techo de la fuente. Es el síntoma exacto.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>El montaje del cable</h3>
+        <ul class="plain">
+          <li>Alimenta <b>cada panel con su propio par</b> desde la caja, no en cadena. Los paneles traen un par de cables pelados justo para esto, aparte de los JST de datos.</li>
+          <li>La <b>malla trenzada termina antes del GX16</b>: el haz de cuatro hilos ya va justo en los 6,5 mm del prensacable y la malla no cabe. Remátala con termorretráctil haciendo tope contra la tuerca.</li>
+          <li><b>Marca los dos pares</b> antes de meterlos en la malla. Dentro todos los rojos son iguales, y al soldar el segundo conector querrás saber cuál es cuál sin pitar con el multímetro.</li>
+          <li>Si los blancos salen rosados o amarillentos en la esquina lejos de la inyección, es caída de tensión: acorta el tramo o sube sección.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  const ART = {
+    artA: {
+      x: 700, y: 190,
+      colors: { y: "#f2c14e", o: "#f0a23a" },
+      rows: [
+        "................", ".......yy.......", "...y........y...",
+        "......oooo......", ".....oooooo.....", "....oooooooo....",
+        ".y..oooooooo..y.", "....oooooooo....", ".....oooooo.....",
+        "......oooo......", "...y........y...", ".......yy.......",
+        "................", "................", "................",
+        "................"
+      ]
+    },
+    artB: {
+      x: 980, y: 190,
+      colors: { c: "#5aa9e6", g: "#4ec27a" },
+      rows: [
+        "................", "................", "................",
+        ".......cc.......", "......cccc......", ".....cccccc.....",
+        "....cccccccc....", "...cccccccccc...", "....c......c....",
+        "....c.gg...c....", "....c.gg...c....", "....c......c....",
+        "....c......c....", "....cccccccc....", "................",
+        "................"
+      ]
+    }
+  };
+
+  const NS = "http://www.w3.org/2000/svg";
+  for (const [id, art] of Object.entries(ART)) {
+    const g = document.getElementById(id);
+    if (!g) continue;
+    art.rows.forEach((row, r) => {
+      [...row].forEach((ch, c) => {
+        const fill = art.colors[ch];
+        if (!fill) return;
+        const rect = document.createElementNS(NS, "rect");
+        rect.setAttribute("x", art.x + c * 15);
+        rect.setAttribute("y", art.y + r * 15);
+        rect.setAttribute("width", 15);
+        rect.setAttribute("height", 15);
+        rect.setAttribute("rx", 2.5);
+        rect.setAttribute("fill", fill);
+        rect.setAttribute("opacity", "0.9");
+        g.appendChild(rect);
+      });
+    });
+  }
+</script>
+
+</body></html>

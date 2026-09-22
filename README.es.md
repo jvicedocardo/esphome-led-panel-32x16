@@ -39,10 +39,13 @@ rotación automática de páginas y apagado.
 👉 **[Guía de construcción completa](docs/GUIA.md)** — lista de materiales con
 enlaces, piezas a imprimir, cableado, montaje, calibración y resolución de problemas.
 
+📐 **[Diagrama de cableado](docs/cableado.html)** — página HTML suelta, se abre sin conexión.
+
 ## Qué hay aquí
 
 ```
 docs/GUIA.md              la guía de construcción, de principio a fin
+docs/cableado.html        diagrama visual del cableado (HTML sin conexión)
 firmware/                 el YAML de ESPHome y las cabeceras de dibujos
 homeassistant/            automatizaciones y panel de control
 impresion3d/              modelo paramétrico en OpenSCAD y los STL
